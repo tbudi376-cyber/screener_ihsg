@@ -1,6 +1,6 @@
 # Screener IHSG Otomatis Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build a CLI-driven stock screening system for IHSG that pulls data from the `idx-edge` MCP server, filters candidates top-down by sector and RRG, validates with fundamental/technical/broker data, and outputs a structured daily report with trade plans.
 
@@ -92,7 +92,7 @@ screener_ihsg/
   - `calculate_atr(ohlc_rows: list[OHLCRow], period: int = 14) -> float`
   - `calculate_trade_plan(close: float, atr: float, support: float) -> TradePlan` with asymmetric multipliers (CL: 1x ATR, TP1: 1.5x ATR, TP2: 2x ATR)
 
-- [ ] **Step 1: Write failing tests for PivotLevels**
+- [x] **Step 1: Write failing tests for PivotLevels**
 
 ```python
 # tests/test_pivot.py
@@ -145,12 +145,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_pivot.py -v`
 Expected: FAIL with "ModuleNotFoundError: No module named 'src'"
 
-- [ ] **Step 3: Create models.py with all dataclasses**
+- [x] **Step 3: Create models.py with all dataclasses**
 
 ```python
 # src/models.py
@@ -229,7 +229,7 @@ class ValidationResult:
     trade_plan: TradePlan | None = None
 ```
 
-- [ ] **Step 4: Create pivot.py with calculation functions**
+- [x] **Step 4: Create pivot.py with calculation functions**
 
 ```python
 # src/pivot.py
@@ -296,7 +296,7 @@ def calculate_trade_plan(close: float, atr: float, support: float) -> TradePlan:
     )
 ```
 
-- [ ] **Step 5: Create `src/__init__.py` and `tests/__init__.py`**
+- [x] **Step 5: Create `src/__init__.py` and `tests/__init__.py`**
 
 ```python
 # src/__init__.py
@@ -308,12 +308,12 @@ def calculate_trade_plan(close: float, atr: float, support: float) -> TradePlan:
 # (empty)
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_pivot.py -v`
 Expected: 4 tests PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -348,7 +348,7 @@ git commit -m "feat: add data models and pivot calculator with asymmetric R:R tr
     - `get_price_batch(codes: list[str]) -> list[dict]`
     - `quota_remaining() -> int`
 
-- [ ] **Step 1: Write test for sector config loading**
+- [x] **Step 1: Write test for sector config loading**
 
 ```python
 # tests/test_models.py
@@ -396,12 +396,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_models.py -v`
 Expected: FAIL with "AssertionError: Missing config/sectors.json"
 
-- [ ] **Step 3: Create sectors.json**
+- [x] **Step 3: Create sectors.json**
 
 Create `config/sectors.json` with the 11 IDX JASICA sector classifications. Use the top liquid stocks per sector (minimum 10 per sector, up to 30 for large sectors like Financials). Source: IDX sector classification as of September 2026.
 
@@ -425,7 +425,7 @@ The exact stock lists must be populated by querying the API or from IDX public d
 
 > **Note for executor:** This is a starter mapping. Verify and update codes by running `cari_saham` for any unfamiliar codes. Remove duplicates across sectors (KLBF, SIDO appear in both Consumer Non-Cyclicals and Healthcare; SMDR in Industrials and Transportation; MTDL in Consumer Cyclicals and Technology). Keep each code in its primary IDX sector only.
 
-- [ ] **Step 4: Create mcp_client.py**
+- [x] **Step 4: Create mcp_client.py**
 
 ```python
 # src/mcp_client.py
@@ -554,12 +554,12 @@ def get_stocks_for_sector(sector: str) -> list[str]:
     return config.get(sector, [])
 ```
 
-- [ ] **Step 5: Run all tests**
+- [x] **Step 5: Run all tests**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/ -v`
 Expected: All tests PASS (test_models + test_pivot)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -586,7 +586,7 @@ git commit -m "feat: add sector config (11 sectors) and MCP client wrapper"
   - `classify_quadrant(rs_ratio: float, rs_momentum: float) -> str` returns "Leading" | "Improving" | "Weakening" | "Lagging"
   - `rank_sectors(sector_rrg_points: dict[str, list[RRGPoint]]) -> list[tuple[str, str]]` returns `[(sector_name, dominant_quadrant), ...]` sorted by attractiveness
 
-- [ ] **Step 1: Write failing tests for RRG calculations**
+- [x] **Step 1: Write failing tests for RRG calculations**
 
 ```python
 # tests/test_sector_rrg.py
@@ -644,12 +644,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_sector_rrg.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
-- [ ] **Step 3: Implement RRG engine**
+- [x] **Step 3: Implement RRG engine**
 
 ```python
 # src/sector_rrg.py
@@ -772,12 +772,12 @@ def rank_sectors(
     return results
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_sector_rrg.py -v`
 Expected: All 8 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -804,7 +804,7 @@ git commit -m "feat: add RRG engine with RS-Ratio, RS-Momentum, and sector ranki
   - `filter_by_bucket(candidates: list[Candidate], allowed_buckets: list[str]) -> list[Candidate]`
   - `rank_candidates(candidates: list[Candidate], max_results: int = 5) -> list[Candidate]`
 
-- [ ] **Step 1: Write failing tests for screening pipeline**
+- [x] **Step 1: Write failing tests for screening pipeline**
 
 ```python
 # tests/test_screener.py
@@ -903,12 +903,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_screener.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
-- [ ] **Step 3: Implement screening pipeline**
+- [x] **Step 3: Implement screening pipeline**
 
 ```python
 # src/screener.py
@@ -988,12 +988,12 @@ def rank_candidates(
     return sorted_candidates[:max_results]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_screener.py -v`
 Expected: 7 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -1020,7 +1020,7 @@ git commit -m "feat: add screening pipeline with sector filter and candidate ran
   - `assemble_validation(candidate: Candidate, analysis_text: str, broker_data: dict, ohlc_rows: list[OHLCRow]) -> ValidationResult`
   - `format_validation_summary(result: ValidationResult) -> str`
 
-- [ ] **Step 1: Write failing tests for validator**
+- [x] **Step 1: Write failing tests for validator**
 
 ```python
 # tests/test_validator.py
@@ -1103,12 +1103,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_validator.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
-- [ ] **Step 3: Implement validator**
+- [x] **Step 3: Implement validator**
 
 ```python
 # src/validator.py
@@ -1233,12 +1233,12 @@ def format_validation_summary(result: ValidationResult) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_validator.py -v`
 Expected: 5 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -1263,7 +1263,7 @@ git commit -m "feat: add deep validation module with honest foreign flow labelin
   - `generate_daily_report(date: str, sector_ranking: list[tuple], candidates: list[Candidate], validations: list[ValidationResult], quota_used: int) -> str`
   - `save_report(content: str, output_dir: str) -> str` returns path to saved file
 
-- [ ] **Step 1: Write failing tests for report generation**
+- [x] **Step 1: Write failing tests for report generation**
 
 ```python
 # tests/test_report.py
@@ -1352,12 +1352,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_report.py -v`
 Expected: FAIL with "ModuleNotFoundError"
 
-- [ ] **Step 3: Implement report generator**
+- [x] **Step 3: Implement report generator**
 
 ```python
 # src/report.py
@@ -1436,12 +1436,12 @@ def save_report(content: str, output_dir: str) -> str:
     return str(filepath)
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/test_report.py -v`
 Expected: 8 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -1462,7 +1462,7 @@ git commit -m "feat: add Markdown report generator with sector ranking and trade
 
 This module ties everything together. It cannot be unit-tested in the traditional sense because it depends on live MCP calls. Instead, this task is a smoke test: run the pipeline against the live API with 1-2 sectors and verify a report is generated.
 
-- [ ] **Step 1: Create main.py orchestrator**
+- [x] **Step 1: Create main.py orchestrator**
 
 ```python
 # src/main.py
@@ -1567,17 +1567,17 @@ if __name__ == "__main__":
     print(PIPELINE_STEPS)
 ```
 
-- [ ] **Step 2: Run smoke test**
+- [x] **Step 2: Run smoke test**
 
 Run: `cd /root/projects/screener_ihsg && python -c "from src.main import create_pipeline_config; c = create_pipeline_config(); print(f'OK: {len(c[\"sector_config\"])} sectors, date={c[\"date\"]}')""`
 Expected: `OK: 11 sectors, date=2026-09-27`
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run: `cd /root/projects/screener_ihsg && python -m pytest tests/ -v --tb=short`
 Expected: All tests PASS (across test_pivot, test_models, test_sector_rrg, test_screener, test_validator, test_report)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 cd /root/projects/screener_ihsg
@@ -1585,7 +1585,7 @@ git add src/main.py
 git commit -m "feat: add CLI orchestrator with pipeline step documentation"
 ```
 
-- [ ] **Step 5: Create output directory**
+- [x] **Step 5: Create output directory**
 
 ```bash
 mkdir -p /root/projects/screener_ihsg/output

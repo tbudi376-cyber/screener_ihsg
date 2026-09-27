@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from src.mcp_client import McpClient, load_sector_config
-from src.models import OHLCRow, Candidate, Stock
+from src.models import OHLCRow, Candidate, Stock, ValidationResult, RRGPoint
 from src.sector_rrg import compute_rrg_for_stock, rank_sectors
 from src.screener import parse_screener_rows, filter_by_sectors, filter_by_bucket, rank_candidates
 from src.validator import assemble_validation, build_validation_request_list
@@ -52,6 +52,7 @@ STEP 5 - VALIDATE TOP CANDIDATES (4 API calls per candidate)
     - broker_summary(code)          -> broker_data
     - riwayat_harga(code, limit=60) -> ohlc_rows for ATR, pivot, foreign flow
     - akumulasi_broker_historis(code) -> accumulation trend
+    - laporan_keuangan(code)        -> deeper fundamentals
   Assemble validation with trade plan.
 
 STEP 6 - GENERATE REPORT
@@ -61,9 +62,9 @@ STEP 6 - GENERATE REPORT
 ESTIMATED QUOTA USAGE:
   Step 1:  1
   Step 2:  1
-  Step 3:  ~20-50 (depending on sector count and batch usage)
-  Step 5:  ~20 (4 calls x 5 candidates)
-  Total:   ~42-72 requests (well within 1000/hr limit)
+  Step 3:  ~11-55 (depending on batch usage)
+  Step 5:  ~35 (7 calls x 5 candidates)
+  Total:   ~48-92 requests (well within 1000/hr limit)
 """
 
 
@@ -83,6 +84,84 @@ def create_pipeline_config() -> dict:
         "output_dir": output_dir,
         "date": datetime.now().strftime("%Y-%m-%d"),
     }
+
+
+def run_pipeline(
+    screener_data: dict,
+    benchmark_ohlc: list[OHLCRow],
+    sector_stock_closes: dict[str, dict[str, list[float]]],
+    validations_data: dict[str, dict],
+    output_dir: str | None = None,
+    quota_used: int = 0,
+    date_str: str | None = None,
+) -> str:
+    """Execute the end-to-end screening and validation pipeline, returning saved report path."""
+    config = create_pipeline_config()
+    target_output_dir = output_dir or config["output_dir"]
+    report_date = date_str or config["date"]
+
+    # 1. Parse screener rows into Candidate models
+    raw_rows = screener_data.get("rows", [])
+    all_candidates = parse_screener_rows(raw_rows, config["sector_config"])
+
+    # 2. Compute RRG for sectors vs benchmark
+    bench_closes = [r.close for r in reversed(benchmark_ohlc)]  # oldest to newest
+    sector_points: dict[str, list[RRGPoint]] = {}
+    for sector, stocks_data in sector_stock_closes.items():
+        points = []
+        for code, closes in stocks_data.items():
+            if len(closes) >= 11 and len(bench_closes) >= 11:
+                # Ensure equal length, matching the end of series
+                min_len = min(len(closes), len(bench_closes))
+                s_c = closes[-min_len:]
+                b_c = bench_closes[-min_len:]
+                pt = compute_rrg_for_stock(s_c, b_c, code)
+                points.append(pt)
+        sector_points[sector] = points
+
+    sector_ranking = rank_sectors(sector_points)
+
+    # 3. Filter candidates by favorable sectors (Leading / Improving)
+    favored_sectors = [
+        s for s, q, _ in sector_ranking if q in ("Leading", "Improving")
+    ]
+    if favored_sectors:
+        sector_filtered = filter_by_sectors(all_candidates, favored_sectors)
+    else:
+        sector_filtered = all_candidates
+
+    # 4. Filter by positive signal bucket
+    bucket_filtered = filter_by_bucket(sector_filtered, config["positive_buckets"])
+    if not bucket_filtered and sector_filtered:
+        bucket_filtered = sector_filtered
+
+    # 5. Rank top candidates
+    top_candidates = rank_candidates(bucket_filtered, max_results=config["max_candidates"])
+
+    # 6. Assemble validations
+    validations: list[ValidationResult] = []
+    for cand in top_candidates:
+        c_code = cand.stock.code
+        val_info = validations_data.get(c_code, {})
+        val_res = assemble_validation(
+            candidate=cand,
+            analysis_text=val_info.get("analysis_text", "No detailed analysis available."),
+            broker_data=val_info.get("broker_data", {}),
+            ohlc_rows=val_info.get("ohlc_rows", []),
+        )
+        validations.append(val_res)
+
+    # 7. Generate report and save
+    report_content = generate_daily_report(
+        date=report_date,
+        sector_ranking=sector_ranking,
+        candidates=top_candidates,
+        validations=validations,
+        quota_used=quota_used,
+    )
+
+    saved_path = save_report(report_content, target_output_dir)
+    return saved_path
 
 
 if __name__ == "__main__":
