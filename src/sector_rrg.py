@@ -132,3 +132,16 @@ def rank_sectors(
         reverse=True,
     )
     return results
+
+
+def select_representative_stocks(
+    sector_config: dict[str, list[str]],
+    sectors: list[str],
+    min_stocks: int = 5,
+) -> dict[str, list[str]]:
+    """Select at least min_stocks representative stocks for each specified sector from config."""
+    result = {}
+    for s in sectors:
+        stocks = sector_config.get(s, [])
+        result[s] = stocks[: min(len(stocks), min_stocks)]
+    return result

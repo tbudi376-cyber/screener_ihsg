@@ -48,13 +48,21 @@ class TestMainPipeline(unittest.TestCase):
             for i in range(25)
         ]
 
-        # Sector stock closes (oldest-to-newest)
+        # Sector stock closes (oldest-to-newest): 5 stocks per sector
         sector_stock_closes = {
             "Financials": {
                 "BBCA": [6000 + i * 20 for i in range(25)],
+                "BBRI": [3000 + i * 15 for i in range(25)],
+                "BMRI": [5000 + i * 18 for i in range(25)],
+                "BBNI": [4000 + i * 10 for i in range(25)],
+                "BRIS": [2000 + i * 8 for i in range(25)],
             },
             "Energy": {
                 "ADRO": [3000 + i * 5 for i in range(25)],
+                "PTBA": [2800 + i * 6 for i in range(25)],
+                "MEDC": [1200 + i * 4 for i in range(25)],
+                "PGAS": [1500 + i * 3 for i in range(25)],
+                "AKRA": [1400 + i * 2 for i in range(25)],
             },
         }
 
@@ -95,12 +103,12 @@ class TestMainPipeline(unittest.TestCase):
         quota_breakdown = QuotaUsageBreakdown(
             screener_calls=1,
             benchmark_calls=1,
-            rrg_sector_calls=2,
+            rrg_sector_calls=10,
             rrg_sectors_processed=2,
-            rrg_stocks_processed=2,
+            rrg_stocks_processed=10,
             validation_calls=5,
             validation_stocks_processed=1,
-            total_calls=9,
+            total_calls=17,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -120,7 +128,8 @@ class TestMainPipeline(unittest.TestCase):
             self.assertIn("BBCA", content)
             self.assertIn("Trade Plan", content)
             self.assertIn("Rincian Penggunaan Kuota API per Modul", content)
-            self.assertIn("9 request", content)
+            self.assertIn("17 request", content)
+            self.assertIn("RRG berbasis sampel 5 saham representatif per sektor", content)
             self.assertIn("Kamus Metrik & Sumber Data", content)
 
 

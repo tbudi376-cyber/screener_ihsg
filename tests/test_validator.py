@@ -203,6 +203,66 @@ class TestValidator(unittest.TestCase):
         if result.trade_plan and result.trade_plan.rr_ratio < 1.0:
             self.assertIn("⚠️ PERINGATAN R:R < 1.0", text)
 
+    def test_extract_fundamental_metrics_pege_near_zero_eps_sets_nm(self):
+        """Temuan 2: PEGE EPS mendekati nol (0.07) harus menghasilkan PER 'N/M' bukan 503.57x."""
+        fin_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {
+                        "data": {
+                            "laba_rugi_per_saham": {
+                                "laba_per_saham_dasar_diatribusikan_kepada_pemilik_entitas_induk": {
+                                    "total": 0.07
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(fin_data, close_price=141.0)
+        self.assertEqual(metrics["eps"], 0.07)
+        self.assertEqual(metrics["per"], "N/M")
+
+    def test_extract_fundamental_metrics_visi_negative_eps_sets_nm(self):
+        """Temuan 2: VISI EPS negatif (-0.01) harus konsisten menghasilkan PER 'N/M'."""
+        fin_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {
+                        "data": {
+                            "laba_rugi_per_saham": {
+                                "laba_per_saham_dasar_diatribusikan_kepada_pemilik_entitas_induk": {
+                                    "total": -0.01
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(fin_data, close_price=1390.0)
+        self.assertEqual(metrics["eps"], -0.01)
+        self.assertEqual(metrics["per"], "N/M")
+
+    def test_format_validation_shows_per_nm_and_decimal_eps(self):
+        """Temuan 2: Output laporan menampilkan 'PER: N/M (Not Meaningful)' dan desimal EPS bila < 1."""
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text="Analysis",
+            broker_data={},
+            ohlc_rows=self.ohlc_rows,
+            fundamental_data={
+                "eps": 0.07,
+                "per": "N/M",
+                "der": 0.17,
+            }
+        )
+        text = format_validation_summary(result)
+        self.assertIn("EPS: Rp0.07", text)
+        self.assertIn("PER: N/M (Not Meaningful)", text)
+        self.assertNotIn("503.57x", text)
+
 
 if __name__ == "__main__":
     unittest.main()

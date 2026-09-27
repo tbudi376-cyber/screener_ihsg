@@ -6,6 +6,7 @@ from src.sector_rrg import (
     normalize_to_100,
     compute_rrg_for_stock,
     rank_sectors,
+    select_representative_stocks,
 )
 from src.mcp_client import McpClient, extract_closes
 from src.models import RRGPoint
@@ -122,6 +123,52 @@ class TestRRG(unittest.TestCase):
         # Karena stock naik jauh lebih cepat daripada benchmark (outperformer), kuadran harus Leading
         self.assertEqual(rrg_point.quadrant, "Leading")
         self.assertGreater(rrg_point.rs_ratio, 100.0)
+
+    def test_select_representative_stocks_minimum_5(self):
+        """Temuan 1: Memilih minimal 5 saham representatif per sektor."""
+        mock_config = {
+            "Financials": ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS", "BBTN"],
+            "Energy": ["ADRO", "PTBA", "MEDC", "PGAS", "AKRA", "ELSA"],
+        }
+        selected = select_representative_stocks(mock_config, ["Financials", "Energy"], min_stocks=5)
+        self.assertEqual(len(selected["Financials"]), 5)
+        self.assertEqual(len(selected["Energy"]), 5)
+        self.assertEqual(selected["Financials"], ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS"])
+
+    def test_rank_sectors_aggregates_5_stocks_per_sector(self):
+        """Temuan 1: rank_sectors menghitung skor dan rata-rata dari 5 saham per sektor."""
+        sector_points = {
+            "Financials": [
+                RRGPoint(code="BBCA", rs_ratio=105.0, rs_momentum=102.0, quadrant="Leading"),
+                RRGPoint(code="BBRI", rs_ratio=103.0, rs_momentum=101.0, quadrant="Leading"),
+                RRGPoint(code="BMRI", rs_ratio=104.0, rs_momentum=100.5, quadrant="Leading"),
+                RRGPoint(code="BBNI", rs_ratio=99.0, rs_momentum=101.0, quadrant="Improving"),
+                RRGPoint(code="BRIS", rs_ratio=101.0, rs_momentum=99.0, quadrant="Weakening"),
+            ],
+            "Energy": [
+                RRGPoint(code="ADRO", rs_ratio=97.0, rs_momentum=98.0, quadrant="Lagging"),
+                RRGPoint(code="PTBA", rs_ratio=96.0, rs_momentum=97.0, quadrant="Lagging"),
+                RRGPoint(code="MEDC", rs_ratio=98.0, rs_momentum=99.0, quadrant="Lagging"),
+                RRGPoint(code="PGAS", rs_ratio=99.0, rs_momentum=98.5, quadrant="Lagging"),
+                RRGPoint(code="AKRA", rs_ratio=95.0, rs_momentum=96.0, quadrant="Lagging"),
+            ],
+        }
+        ranked = rank_sectors(sector_points)
+        self.assertEqual(len(ranked), 2)
+        # Financials has 3 Leading, 1 Improving, 1 Weakening -> dominant Leading
+        fin = ranked[0]
+        self.assertEqual(fin[0], "Financials")
+        self.assertEqual(fin[1], "Leading")
+        # avg score = (4+4+4+3+2)/5 = 3.4
+        self.assertEqual(fin[2], 3.4)
+        # avg rs_ratio = (105+103+104+99+101)/5 = 102.4
+        self.assertEqual(fin[3], 102.4)
+
+        # Energy has 5 Lagging -> dominant Lagging, score = 1.0
+        nrg = ranked[1]
+        self.assertEqual(nrg[0], "Energy")
+        self.assertEqual(nrg[1], "Lagging")
+        self.assertEqual(nrg[2], 1.0)
 
 
 if __name__ == "__main__":

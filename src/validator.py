@@ -119,9 +119,14 @@ def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dic
         if liab is not None and eq and eq > 0:
             metrics["der"] = round(liab / eq, 2)
 
-    if close_price and metrics["eps"] and metrics["eps"] > 0:
+    # Guard against zero, near-zero, or negative EPS producing misleading astronomical PER
+    EPS_MIN_THRESHOLD = 1.0  # Annualized EPS < Rp1.0/share or EPS <= 0 is Not Meaningful (N/M)
+    if metrics["eps"] is not None:
         annualized_eps = metrics["eps"] * 4
-        metrics["per"] = round(close_price / annualized_eps, 2)
+        if metrics["eps"] <= 0 or annualized_eps < EPS_MIN_THRESHOLD:
+            metrics["per"] = "N/M"
+        elif close_price:
+            metrics["per"] = round(close_price / annualized_eps, 2)
 
     return metrics
 
@@ -183,9 +188,16 @@ def format_validation_summary(result: ValidationResult) -> str:
         lines.append("### Fundamental & Valuasi")
         parts = []
         if f.get("eps") is not None:
-            parts.append(f"EPS: Rp{f['eps']:,.0f}")
+            eps_val = f["eps"]
+            if 0 < abs(eps_val) < 1.0:
+                parts.append(f"EPS: Rp{eps_val:.2f}")
+            else:
+                parts.append(f"EPS: Rp{eps_val:,.0f}")
         if f.get("per") is not None:
-            parts.append(f"PER: {f['per']}x")
+            if f["per"] == "N/M":
+                parts.append("PER: N/M (Not Meaningful)")
+            else:
+                parts.append(f"PER: {f['per']}x")
         if f.get("der") is not None:
             parts.append(f"DER: {f['der']}x")
         if f.get("revenue_growth_yoy") is not None:
