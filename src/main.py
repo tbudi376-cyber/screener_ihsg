@@ -124,6 +124,20 @@ def run_pipeline(
 
     sector_ranking = rank_sectors(sector_points)
 
+    # Calculate actual stock sample count per sector for report transparency
+    sector_counts = [len(stocks) for stocks in sector_stock_closes.values() if stocks]
+    if sector_counts and isinstance(quota_used, QuotaUsageBreakdown):
+        min_c = min(sector_counts)
+        max_c = max(sector_counts)
+        sample_str = f"{min_c}" if min_c == max_c else f"{min_c}-{max_c}"
+        if not isinstance(quota_used.details, dict):
+            quota_used.details = {}
+        quota_used.details["rrg_stocks_per_sector"] = sample_str
+        if quota_used.rrg_sectors_processed == 0:
+            quota_used.rrg_sectors_processed = len(sector_counts)
+        if quota_used.rrg_stocks_processed == 0:
+            quota_used.rrg_stocks_processed = sum(sector_counts)
+
     # 3. Filter candidates by favorable sectors (Leading / Improving)
     favored_sectors = [
         item[0] for item in sector_ranking if item[1] in ("Leading", "Improving")

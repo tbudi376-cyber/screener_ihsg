@@ -4,12 +4,48 @@ from src.models import Candidate, ValidationResult, QuotaUsageBreakdown
 from src.validator import format_validation_summary
 
 
+def resolve_rrg_note(
+    quota_used: int | QuotaUsageBreakdown,
+    explicit_note: str | None = None,
+) -> str | None:
+    """Resolve dynamic RRG transparency note based on actual sample size or index status."""
+    if explicit_note is not None:
+        return explicit_note
+
+    if not isinstance(quota_used, QuotaUsageBreakdown):
+        return None
+
+    details = quota_used.details if isinstance(quota_used.details, dict) else {}
+
+    # If full sectoral index is used
+    if details.get("rrg_is_full_index", False):
+        return "_Catatan: RRG berbasis data indeks sektoral resmi BEI (representasi penuh seluruh anggota sektor)._"
+
+    # If stock sampling is used
+    if quota_used.rrg_sectors_processed > 0:
+        if "rrg_stocks_per_sector" in details:
+            n_str = str(details["rrg_stocks_per_sector"])
+        elif quota_used.rrg_stocks_processed % quota_used.rrg_sectors_processed == 0:
+            n_str = str(quota_used.rrg_stocks_processed // quota_used.rrg_sectors_processed)
+        else:
+            min_s = quota_used.rrg_stocks_processed // quota_used.rrg_sectors_processed
+            max_s = min_s + 1
+            n_str = f"{min_s}-{max_s}"
+        return (
+            f"_Catatan: RRG berbasis sampel {n_str} saham representatif per sektor "
+            f"(bukan agregat penuh seluruh anggota sektor)._"
+        )
+
+    return None
+
+
 def generate_daily_report(
     date: str,
     sector_ranking: list[tuple],
     candidates: list[Candidate],
     validations: list[ValidationResult],
     quota_used: int | QuotaUsageBreakdown,
+    rrg_sample_note: str | None = None,
 ) -> str:
     lines = []
     lines.append(f"# Screener IHSG - Laporan Harian {date}")
@@ -48,6 +84,11 @@ def generate_daily_report(
             rs_r = f"{item[3]:.1f}" if len(item) > 3 else "-"
             rs_m = f"{item[4]:.1f}" if len(item) > 4 else "-"
             lines.append(f"| {i} | {sector} | {quadrant} | {score} | {rs_r} | {rs_m} |")
+
+        note = resolve_rrg_note(quota_used, rrg_sample_note)
+        if note:
+            lines.append("")
+            lines.append(note)
     else:
         lines.append("Tidak ada data RRG tersedia.")
     lines.append("")

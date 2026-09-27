@@ -122,6 +122,42 @@ class TestReport(unittest.TestCase):
             self.assertTrue(Path(path).exists())
             self.assertTrue(path.endswith(".md"))
 
+    def test_report_shows_dynamic_rrg_sample_note_for_stock_samples(self):
+        """Transparansi: RRG berbasis sampel N saham representatif per sektor."""
+        breakdown = QuotaUsageBreakdown(
+            screener_calls=1,
+            benchmark_calls=1,
+            rrg_sector_calls=5,
+            rrg_sectors_processed=5,
+            rrg_stocks_processed=6,
+            validation_calls=17,
+            validation_stocks_processed=3,
+            total_calls=24,
+            details={"rrg_stocks_per_sector": "1-2"}
+        )
+        report = generate_daily_report(
+            "2026-09-27", self.sector_ranking, self.candidates, self.validations, breakdown)
+        self.assertIn("RRG berbasis sampel 1-2 saham representatif per sektor", report)
+        self.assertIn("(bukan agregat penuh seluruh anggota sektor)", report)
+
+    def test_report_changes_rrg_note_when_full_index_used(self):
+        """Transparansi: Jika full index digunakan, catatan otomatis berubah."""
+        breakdown = QuotaUsageBreakdown(
+            screener_calls=1,
+            benchmark_calls=1,
+            rrg_sector_calls=11,
+            rrg_sectors_processed=11,
+            rrg_stocks_processed=11,
+            validation_calls=17,
+            validation_stocks_processed=3,
+            total_calls=30,
+            details={"rrg_is_full_index": True}
+        )
+        report = generate_daily_report(
+            "2026-09-27", self.sector_ranking, self.candidates, self.validations, breakdown)
+        self.assertIn("indeks sektoral resmi BEI (representasi penuh seluruh anggota sektor)", report)
+        self.assertNotIn("bukan agregat penuh", report)
+
 
 if __name__ == "__main__":
     unittest.main()
