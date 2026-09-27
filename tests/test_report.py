@@ -10,8 +10,8 @@ from src.models import (
 class TestReport(unittest.TestCase):
     def setUp(self):
         self.sector_ranking = [
-            ("Financials", "Leading", 3.5),
-            ("Energy", "Improving", 2.8),
+            ("Financials", "Leading", 4.0, 105.2, 103.4),
+            ("Energy", "Improving", 3.0, 98.5, 102.1),
         ]
         self.stock = Stock(code="BBCA", name="Bank Central Asia Tbk.", sector="Financials")
         self.candidates = [
@@ -29,7 +29,12 @@ class TestReport(unittest.TestCase):
                                   s1=6208, s2=6167, s3=6133),
                 trade_plan=TradePlan(entry_low=6200, entry_high=6250,
                                     cutloss=6114, target1=6454,
-                                    target2=6522, rr_ratio=1.5, atr=136),
+                                    target2=6522, rr_ratio=1.75, atr=136),
+                fundamental_data={
+                    "eps": 120.0,
+                    "per": 15.2,
+                    "der": 0.85,
+                }
             ),
         ]
 
@@ -38,11 +43,14 @@ class TestReport(unittest.TestCase):
             "2026-09-27", self.sector_ranking, self.candidates, self.validations, 25)
         self.assertIn("2026-09-27", report)
 
-    def test_report_contains_sector_ranking(self):
+    def test_report_contains_sector_ranking_with_rs_metrics(self):
+        """Audit Check 5a: Tabel sektor memuat skor, RS-Ratio, dan RS-Momentum."""
         report = generate_daily_report(
             "2026-09-27", self.sector_ranking, self.candidates, self.validations, 25)
         self.assertIn("Financials", report)
         self.assertIn("Leading", report)
+        self.assertIn("105.2", report)
+        self.assertIn("103.4", report)
 
     def test_report_contains_candidates(self):
         report = generate_daily_report(
@@ -53,7 +61,7 @@ class TestReport(unittest.TestCase):
         report = generate_daily_report(
             "2026-09-27", self.sector_ranking, self.candidates, self.validations, 25)
         self.assertIn("Trade Plan", report)
-        self.assertIn("1.5:1", report)
+        self.assertIn("1.75:1", report)
 
     def test_report_shows_quota(self):
         report = generate_daily_report(
@@ -64,6 +72,15 @@ class TestReport(unittest.TestCase):
         report = generate_daily_report(
             "2026-09-27", self.sector_ranking, self.candidates, self.validations, 25)
         self.assertNotIn("Money Flow", report)
+
+    def test_report_contains_metric_glossary(self):
+        """Audit Check 5b: Dokumentasi eksplisit istilah SINYAL BERSIH, WR Event, DD, dll."""
+        report = generate_daily_report(
+            "2026-09-27", self.sector_ranking, self.candidates, self.validations, 25)
+        self.assertIn("Kamus Metrik & Sumber Data", report)
+        self.assertIn("SINYAL BERSIH", report)
+        self.assertIn("WR Event", report)
+        self.assertIn("screener_saham_terkini", report)
 
     def test_empty_candidates_still_generates(self):
         report = generate_daily_report(

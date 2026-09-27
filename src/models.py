@@ -71,3 +71,5 @@ class ValidationResult:
     foreign_flow_5d: list = field(default_factory=list)
     pivot: PivotLevels | None = None
     trade_plan: TradePlan | None = None
+    fundamental_data: dict = field(default_factory=dict)
+    fallback_reason: str = ""

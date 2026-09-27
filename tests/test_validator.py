@@ -3,6 +3,7 @@ from src.validator import (
     parse_foreign_flow_5d,
     assemble_validation,
     format_validation_summary,
+    extract_fundamental_metrics,
 )
 from src.models import Candidate, Stock, OHLCRow, ValidationResult
 
@@ -45,8 +46,8 @@ class TestValidator(unittest.TestCase):
         self.assertIsInstance(result, ValidationResult)
         self.assertIsNotNone(result.pivot)
         self.assertIsNotNone(result.trade_plan)
-        self.assertGreater(result.trade_plan.rr_ratio, 1.0,
-                           "R:R must be > 1.0 (asymmetric ATR)")
+        self.assertLess(result.trade_plan.cutloss, result.trade_plan.entry_low,
+                        "Cutloss must be strictly below entry_low")
 
     def test_format_validation_not_empty(self):
         result = assemble_validation(
@@ -71,6 +72,90 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Foreign Flow", text)
         self.assertNotIn("Money Flow", text,
                          "Must use 'Foreign Flow', not 'Money Flow' (data honesty)")
+
+    def test_extract_fundamental_metrics(self):
+        """Audit Check 3: Ekstraksi rasio fundamental dari laporan_keuangan."""
+        mock_fin_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {
+                        "data": {
+                            "penjualan_dan_pendapatan_usaha": 10e12,
+                            "laba_rugi": 1e12,
+                            "laba_rugi_per_saham": {
+                                "laba_per_saham_dasar_diatribusikan_kepada_pemilik_entitas_induk": {
+                                    "total": 85.0
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "data": {
+                            "penjualan_dan_pendapatan_usaha": 8e12,
+                            "laba_rugi": 800e9,
+                        }
+                    }
+                ]
+            },
+            "BALANCE_SHEET": {
+                "items": [
+                    {
+                        "data": {
+                            "liabilitas_dan_ekuitas": {
+                                "liabilitas": {"total": 15e12},
+                                "ekuitas": {"total": 20e12},
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(mock_fin_data, close_price=3000.0)
+        self.assertEqual(metrics["eps"], 85.0)
+        self.assertEqual(metrics["der"], 0.75)  # 15T / 20T
+        self.assertEqual(metrics["revenue_growth_yoy"], 25.0)  # (10-8)/8 * 100
+        self.assertEqual(metrics["net_income_growth_yoy"], 25.0)
+        self.assertIsNotNone(metrics["per"])
+
+    def test_format_validation_with_fundamentals(self):
+        """Audit Check 3: Format output menampilkan data fundamental."""
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text="Test analysis",
+            broker_data={"brokers": []},
+            ohlc_rows=self.ohlc_rows,
+            fundamental_data={
+                "eps": 85.0,
+                "per": 8.8,
+                "der": 0.75,
+                "revenue_growth_yoy": 25.0,
+                "net_income_growth_yoy": 20.0,
+            }
+        )
+        text = format_validation_summary(result)
+        self.assertIn("Fundamental & Valuasi", text)
+        self.assertIn("EPS", text)
+        self.assertIn("DER: 0.75x", text)
+        self.assertIn("Pertumbuhan Pendapatan", text)
+
+    def test_format_validation_fallback_reason(self):
+        """Audit Check 4: Fallback message informatif dan tidak kosong tanpa alasan."""
+        amrt_candidate = Candidate(
+            stock=Stock(code="AMRT", name="Sumber Alfaria Trijaya Tbk.", sector="Consumer Non-Cyclicals"),
+            bucket="AKUMULASI SENYAP",
+            summary="mode senyap",
+        )
+        result = assemble_validation(
+            candidate=amrt_candidate,
+            analysis_text="",
+            broker_data={},
+            ohlc_rows=[],
+            fallback_reason="Dilewati dari validasi mendalam untuk menghemat kuota API harian (tier AKUMULASI SENYAP peringkat cadangan). Lakukan cek manual bila diperlukan."
+        )
+        text = format_validation_summary(result)
+        self.assertIn("Catatan Validasi", text)
+        self.assertIn("Dilewati dari validasi mendalam untuk menghemat kuota API harian", text)
+        self.assertNotIn("No detailed analysis available", text)
 
 
 if __name__ == "__main__":

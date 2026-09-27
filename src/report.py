@@ -22,10 +22,15 @@ def generate_daily_report(
     lines.append("## 1. Ranking Sektor (RRG)")
     if sector_ranking:
         lines.append("")
-        lines.append("| Rank | Sektor | Kuadran | Skor |")
-        lines.append("|------|--------|---------|------|")
-        for i, (sector, quadrant, score) in enumerate(sector_ranking, 1):
-            lines.append(f"| {i} | {sector} | {quadrant} | {score} |")
+        lines.append("| Rank | Sektor | Kuadran | Skor | RS-Ratio | RS-Momentum |")
+        lines.append("|------|--------|---------|------|----------|-------------|")
+        for i, item in enumerate(sector_ranking, 1):
+            sector = item[0]
+            quadrant = item[1]
+            score = item[2]
+            rs_r = f"{item[3]:.1f}" if len(item) > 3 else "-"
+            rs_m = f"{item[4]:.1f}" if len(item) > 4 else "-"
+            lines.append(f"| {i} | {sector} | {quadrant} | {score} | {rs_r} | {rs_m} |")
     else:
         lines.append("Tidak ada data RRG tersedia.")
     lines.append("")
@@ -56,6 +61,31 @@ def generate_daily_report(
         lines.append("Tidak ada validasi (tidak ada kandidat).")
     lines.append("")
 
+    lines.append("## 4. Kamus Metrik & Sumber Data")
+    lines.append("")
+    lines.append("Sesuai prinsip kejujuran data (PRD §8), berikut adalah definisi dan asal data dari setiap istilah:")
+    lines.append("")
+    lines.append("1. **Kategori Sinyal (Bucket)** — _Sumber: `idx-edge:screener_saham_terkini` (`screener_v5.py`)_")
+    lines.append("   - **SINYAL BERSIH**: Konvergensi teknikal bullish (di atas MA5/MA20) + net buy asing signifikan + akumulasi top broker tanpa konflik distribusi.")
+    lines.append("   - **SINYAL SENYAP**: Akumulasi pekat oleh broker utama atau asing saat volatilitas harga masih tenang (mode senyap / belum breakout).")
+    lines.append("   - **AKUMULASI SENYAP**: Sinyal tier-2 dengan tanda akumulasi awal, disiapkan sebagai watchlist bila volume terkonfirmasi meningkat.")
+    lines.append("   - **RISIKO PANTULAN / KONFLIK DISTRIBUSI**: Anomali di mana harga naik tetapi broker distribusi aktif atau asing melepas barang (diberi penalti skor/disaring).")
+    lines.append("")
+    lines.append("2. **Metrik Probabilitas Historis** — _Sumber: Model backtest event-based `idx-edge` (Jan 2020 - sekarang)_")
+    lines.append("   - **WR Event (Win Rate Event)**: Probabilitas historis harga mencapai Target Profit (dinamis berbasis ATR) sebelum menyentuh Stop Loss dalam horizon D+2 s/d D+4.")
+    lines.append("   - **Potensi**: Rata-rata persentase kenaikan harga maksimum historis pasca kemunculan pola sinyal serupa.")
+    lines.append("   - **DD (Drawdown)**: Rata-rata penurunan harga terdalam (Maximum Adverse Excursion) selama periode holding.")
+    lines.append("")
+    lines.append("3. **Net Foreign Flow (Aliran Dana Asing Murni)** — _Sumber: `idx-edge:riwayat_harga` (`n_foreign`)_")
+    lines.append("   - Menampilkan selisih lembar saham beli vs jual oleh investor tipe Asing (Foreign) murni, bukan estimasi formula tertutup.")
+    lines.append("")
+    lines.append("4. **Trade Plan & Pivot Levels** — _Sumber: Perhitungan lokal `src/pivot.py` dari OHLC harian_")
+    lines.append("   - Cutloss divalidasi ketat selalu di bawah batas bawah Entry Range (S1/S2/buffer ATR).")
+    lines.append("   - Target 1 & Target 2 diturunkan dari level resisten Pivot aktual (R1, R2, R3).")
+    lines.append("")
+    lines.append("5. **Fundamental & Valuasi** — _Sumber: `idx-edge:laporan_keuangan` & `analisa_saham`_")
+    lines.append("   - Disarikan dari Laporan Keuangan resmi emiten: EPS, PER, DER, dan pertumbuhan pendapatan/laba YoY.")
+    lines.append("")
     lines.append("---")
     lines.append("_Disclaimer: Analisa ini berbasis data historis dan pola statistik.")
     lines.append("Bukan ajakan jual/beli. Keputusan investasi tanggung jawab masing-masing._")

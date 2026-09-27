@@ -123,7 +123,7 @@ def run_pipeline(
 
     # 3. Filter candidates by favorable sectors (Leading / Improving)
     favored_sectors = [
-        s for s, q, _ in sector_ranking if q in ("Leading", "Improving")
+        item[0] for item in sector_ranking if item[1] in ("Leading", "Improving")
     ]
     if favored_sectors:
         sector_filtered = filter_by_sectors(all_candidates, favored_sectors)
@@ -143,11 +143,22 @@ def run_pipeline(
     for cand in top_candidates:
         c_code = cand.stock.code
         val_info = validations_data.get(c_code, {})
+        has_analysis = bool(val_info.get("analysis_text"))
+        
+        fallback_msg = val_info.get("fallback_reason", "")
+        if not has_analysis and not fallback_msg:
+            fallback_msg = (
+                f"Validasi mendalam dilewati untuk saham {c_code} guna efisiensi kuota API harian "
+                f"(tier cadangan/sinyal sekunder). Lakukan cek manual bila diperlukan."
+            )
+
         val_res = assemble_validation(
             candidate=cand,
-            analysis_text=val_info.get("analysis_text", "No detailed analysis available."),
+            analysis_text=val_info.get("analysis_text", ""),
             broker_data=val_info.get("broker_data", {}),
             ohlc_rows=val_info.get("ohlc_rows", []),
+            fundamental_data=val_info.get("fundamental_data", {}),
+            fallback_reason=fallback_msg,
         )
         validations.append(val_res)
 

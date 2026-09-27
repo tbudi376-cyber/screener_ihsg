@@ -96,12 +96,13 @@ def compute_rrg_for_stock(
 
 def rank_sectors(
     sector_points: dict[str, list[RRGPoint]],
-) -> list[tuple[str, str, float]]:
+) -> list[tuple[str, str, float, float, float]]:
     """Rank sectors by attractiveness.
 
-    Returns [(sector_name, dominant_quadrant, score), ...] sorted by score DESC.
-    Leading=4, Improving=3, Weakening=2, Lagging=1.
-    Score = weighted average of stock quadrants in that sector.
+    Returns [(sector_name, dominant_quadrant, score, avg_rs_ratio, avg_rs_momentum), ...]
+    sorted primarily by quadrant score (Leading=4, Improving=3, Weakening=2, Lagging=1)
+    and secondarily by composite relative strength (RS-Ratio * RS-Momentum) to prevent
+    arbitrary ordering among sectors with identical quadrant scores.
     """
     quadrant_score = {"Leading": 4, "Improving": 3, "Weakening": 2, "Lagging": 1}
     results = []
@@ -109,9 +110,25 @@ def rank_sectors(
         if not points:
             continue
         scores = [quadrant_score[p.quadrant] for p in points]
-        avg = sum(scores) / len(scores)
-        dominant = max(set(p.quadrant for p in points),
-                       key=lambda q: sum(1 for p in points if p.quadrant == q))
-        results.append((sector, dominant, round(avg, 2)))
-    results.sort(key=lambda x: x[2], reverse=True)
+        avg_score = sum(scores) / len(scores)
+        avg_rs_ratio = sum(p.rs_ratio for p in points) / len(points)
+        avg_rs_momentum = sum(p.rs_momentum for p in points) / len(points)
+
+        dominant = max(
+            set(p.quadrant for p in points),
+            key=lambda q: sum(1 for p in points if p.quadrant == q),
+        )
+        results.append((
+            sector,
+            dominant,
+            round(avg_score, 2),
+            round(avg_rs_ratio, 2),
+            round(avg_rs_momentum, 2),
+        ))
+
+    # Sort primarily by quadrant score, secondarily by product of RS-Ratio * RS-Momentum
+    results.sort(
+        key=lambda x: (x[2], x[3] * x[4]),
+        reverse=True,
+    )
     return results

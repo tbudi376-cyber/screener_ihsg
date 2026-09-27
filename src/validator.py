@@ -35,11 +35,75 @@ def parse_foreign_flow_5d(ohlc_rows: list[OHLCRow]) -> list[float]:
     return [row.n_foreign for row in ohlc_rows[:5]]
 
 
+def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dict:
+    """Extract key fundamental metrics from laporan_keuangan (INCOME_STATEMENT & BALANCE_SHEET)."""
+    metrics = {
+        "eps": None,
+        "per": None,
+        "der": None,
+        "revenue": None,
+        "net_income": None,
+        "equity": None,
+        "revenue_growth_yoy": None,
+        "net_income_growth_yoy": None,
+    }
+    if not fin_data:
+        return metrics
+
+    inc = fin_data.get("INCOME_STATEMENT", {})
+    bal = fin_data.get("BALANCE_SHEET", {})
+
+    inc_items = inc.get("items", [])
+    bal_items = bal.get("items", [])
+
+    if inc_items:
+        latest_inc = inc_items[0].get("data", {})
+        rev = latest_inc.get("penjualan_dan_pendapatan_usaha")
+        net = latest_inc.get("laba_rugi")
+        eps_data = latest_inc.get("laba_rugi_per_saham", {}).get(
+            "laba_per_saham_dasar_diatribusikan_kepada_pemilik_entitas_induk", {}
+        )
+        eps = eps_data.get("total")
+        if not eps or eps == 0.0:
+            eps = eps_data.get("laba_rugi_per_saham_dasar_dari_operasi_yang_dilanjutkan")
+
+        metrics["revenue"] = rev
+        metrics["net_income"] = net
+        metrics["eps"] = eps
+
+        # Calculate YoY growth if previous year/quarter is available
+        if len(inc_items) > 1:
+            prev_inc = inc_items[1].get("data", {})
+            prev_rev = prev_inc.get("penjualan_dan_pendapatan_usaha")
+            prev_net = prev_inc.get("laba_rugi")
+            if rev is not None and prev_rev and prev_rev > 0:
+                metrics["revenue_growth_yoy"] = round((rev - prev_rev) / prev_rev * 100, 2)
+            if net is not None and prev_net and prev_net != 0:
+                metrics["net_income_growth_yoy"] = round((net - prev_net) / abs(prev_net) * 100, 2)
+
+    if bal_items:
+        latest_bal = bal_items[0].get("data", {})
+        liab = latest_bal.get("liabilitas_dan_ekuitas", {}).get("liabilitas", {}).get("total")
+        eq = latest_bal.get("liabilitas_dan_ekuitas", {}).get("ekuitas", {}).get("total")
+        metrics["equity"] = eq
+        if liab is not None and eq and eq > 0:
+            metrics["der"] = round(liab / eq, 2)
+
+    if close_price and metrics["eps"] and metrics["eps"] > 0:
+        # Annualized quarterly approximation (EPS * 4)
+        annualized_eps = metrics["eps"] * 4
+        metrics["per"] = round(close_price / annualized_eps, 2)
+
+    return metrics
+
+
 def assemble_validation(
     candidate: Candidate,
     analysis_text: str,
     broker_data: dict,
     ohlc_rows: list[OHLCRow],
+    fundamental_data: dict | None = None,
+    fallback_reason: str = "",
 ) -> ValidationResult:
     latest = ohlc_rows[0] if ohlc_rows else None
     pivot = None
@@ -53,6 +117,7 @@ def assemble_validation(
             close=latest.close,
             atr=atr,
             support=pivot.s1 if pivot else latest.low,
+            pivot_levels=pivot,
         )
 
     return ValidationResult(
@@ -62,6 +127,8 @@ def assemble_validation(
         foreign_flow_5d=foreign_flow_5d,
         pivot=pivot,
         trade_plan=trade_plan,
+        fundamental_data=fundamental_data or {},
+        fallback_reason=fallback_reason,
     )
 
 
@@ -71,9 +138,37 @@ def format_validation_summary(result: ValidationResult) -> str:
     lines.append(f"**Sector:** {result.stock.sector}")
     lines.append("")
 
-    lines.append("### Analysis")
-    lines.append(result.analysis_text)
-    lines.append("")
+    if result.fallback_reason:
+        lines.append("### Catatan Validasi")
+        lines.append(f"ℹ️ {result.fallback_reason}")
+        lines.append("")
+
+    if result.analysis_text:
+        lines.append("### Analysis")
+        lines.append(result.analysis_text)
+        lines.append("")
+
+    if result.fundamental_data:
+        f = result.fundamental_data
+        lines.append("### Fundamental & Valuasi")
+        parts = []
+        if f.get("eps") is not None:
+            parts.append(f"EPS: Rp{f['eps']:,.0f}")
+        if f.get("per") is not None:
+            parts.append(f"PER: {f['per']}x")
+        if f.get("der") is not None:
+            parts.append(f"DER: {f['der']}x")
+        if f.get("revenue_growth_yoy") is not None:
+            parts.append(f"Pertumbuhan Pendapatan (YoY): {f['revenue_growth_yoy']:+,.1f}%")
+        if f.get("net_income_growth_yoy") is not None:
+            parts.append(f"Pertumbuhan Laba Bersih (YoY): {f['net_income_growth_yoy']:+,.1f}%")
+
+        if parts:
+            for p in parts:
+                lines.append(f"  • {p}")
+        else:
+            lines.append("  Data rasio keuangan belum lengkap di periode pelaporan terakhir.")
+        lines.append("")
 
     lines.append("### Net Foreign Flow (5D)")
     if result.foreign_flow_5d:
@@ -81,7 +176,7 @@ def format_validation_summary(result: ValidationResult) -> str:
             direction = "BUY" if flow > 0 else "SELL"
             lines.append(f"  D-{i}: {flow:+,.0f} shares ({direction})")
     else:
-        lines.append("  No data available")
+        lines.append("  Data foreign flow harian tidak ditarik untuk saham ini.")
     lines.append("")
 
     if result.pivot:
@@ -96,9 +191,9 @@ def format_validation_summary(result: ValidationResult) -> str:
         tp = result.trade_plan
         lines.append("### Trade Plan")
         lines.append(f"  Entry Range: {tp.entry_low:,.0f} - {tp.entry_high:,.0f}")
-        lines.append(f"  Cutloss: {tp.cutloss:,.0f} (1x ATR)")
-        lines.append(f"  Target 1: {tp.target1:,.0f} (1.5x ATR)")
-        lines.append(f"  Target 2: {tp.target2:,.0f} (2x ATR)")
+        lines.append(f"  Cutloss: {tp.cutloss:,.0f} (Proteksi di bawah Entry Range)")
+        lines.append(f"  Target 1: {tp.target1:,.0f} (Resisten Terdekat)")
+        lines.append(f"  Target 2: {tp.target2:,.0f} (Resisten Lanjutan)")
         lines.append(f"  R:R Ratio: {tp.rr_ratio}:1")
         lines.append(f"  ATR(14): {tp.atr:,.2f}")
         lines.append("")
