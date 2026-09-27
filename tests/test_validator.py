@@ -4,6 +4,7 @@ from src.validator import (
     assemble_validation,
     format_validation_summary,
     extract_fundamental_metrics,
+    extract_personality_wr_stats,
 )
 from src.models import Candidate, Stock, OHLCRow, ValidationResult
 
@@ -262,6 +263,79 @@ class TestValidator(unittest.TestCase):
         self.assertIn("EPS: Rp0.07", text)
         self.assertIn("PER: N/M (Not Meaningful)", text)
         self.assertNotIn("503.57x", text)
+
+    def test_extract_personality_wr_stats_weak_history(self):
+        """PTBA case: average WR Event from valid patterns < 50% triggers weak history flag."""
+        analysis_text = """
+🧬 PERSONALITY HISTORIS
+  Basis: pola aktif hari ini | WR Event pakai TP/CL ATR dinamis
+  1. asing beli kuat — **SAMPEL VALID**
+     WR Event 45.8% | rata2 event +0.12% | D3 +0.09%
+     Sample 565
+  2. Gabungan (Asing + Teknikal) — **SAMPEL VALID**
+     WR Event 44.5% | rata2 event +0.05% | D3 +0.13%
+     Sample 409
+  3. Gabungan (Broker + Asing) — **SAMPEL VALID**
+     WR Event 44.0% | rata2 event +0.01% | D3 +0.06%
+     Sample 409
+  4. harga di atas MA5 — **SAMPEL VALID**
+     WR Event 43.9% | rata2 event +0.14% | D3 +0.19%
+     Sample 788
+
+📋 REKOMENDASI
+        """
+        stats = extract_personality_wr_stats(analysis_text)
+        self.assertTrue(stats["is_weak_history"])
+        self.assertEqual(len(stats["valid_patterns"]), 4)
+        self.assertAlmostEqual(stats["avg_wr"], 44.55, delta=0.1)
+        self.assertIn("⚠️ Historis Lemah", stats["flag"])
+
+    def test_extract_personality_wr_stats_strong_history(self):
+        """WBSA case: valid pattern WR Event >= 50% does not trigger weak history flag."""
+        analysis_text = """
+🧬 PERSONALITY HISTORIS
+  Basis: pola aktif hari ini | WR Event pakai TP/CL ATR dinamis
+  1. top broker akumulasi pekat — **EDGE HISTORIS**
+     WR Event 66.7% | rata2 event +3.03% | D3 +1.42%
+     Sample 21
+  2. asing beli kuat — **SAMPEL KECIL**
+     WR Event 66.7%
+     Sample 18
+  3. Gabungan (Broker + Asing) — **SAMPEL KECIL**
+     WR Event 60.0%
+     Sample 15
+
+📋 REKOMENDASI
+        """
+        stats = extract_personality_wr_stats(analysis_text)
+        self.assertFalse(stats["is_weak_history"])
+        self.assertEqual(len(stats["valid_patterns"]), 1)
+        self.assertEqual(stats["avg_wr"], 66.7)
+        self.assertIsNone(stats["flag"])
+
+    def test_assemble_validation_sets_candidate_wr_event_flag(self):
+        """Assembling validation sets candidate.wr_event_flag when history is weak."""
+        analysis_text = """
+🧬 PERSONALITY HISTORIS
+  1. pola downtrend — **SAMPEL VALID**
+     WR Event 42.0%
+     Sample 100
+📋 REKOMENDASI
+        """
+        cand = Candidate(
+            stock=self.stock,
+            bucket="AKUMULASI SENYAP",
+            summary="test",
+            wr_event=None,
+        )
+        val = assemble_validation(
+            candidate=cand,
+            analysis_text=analysis_text,
+            broker_data={},
+            ohlc_rows=self.ohlc_rows,
+        )
+        self.assertTrue(val.personality_stats["is_weak_history"])
+        self.assertIn("42.0% ⚠️ Historis Lemah", cand.wr_event_flag)
 
 
 if __name__ == "__main__":

@@ -98,8 +98,24 @@ def generate_daily_report(
         lines.append("")
         lines.append("| # | Kode | Nama | Sektor | Sinyal | WR Event | Potensi | DD |")
         lines.append("|---|------|------|--------|--------|----------|---------|-----|")
+        val_map = {v.stock.code: v for v in validations} if validations else {}
         for i, c in enumerate(candidates, 1):
-            wr = f"{c.wr_event:.1f}%" if c.wr_event else "-"
+            flag = getattr(c, "wr_event_flag", None)
+            if not flag and c.stock.code in val_map:
+                v = val_map[c.stock.code]
+                if v.personality_stats.get("is_weak_history"):
+                    wr_num = c.wr_event if c.wr_event is not None else v.personality_stats.get("avg_wr")
+                    if wr_num is not None:
+                        flag = f"{wr_num:.1f}% ⚠️ Historis Lemah"
+            if flag:
+                wr = flag
+            elif c.wr_event is not None:
+                if c.wr_event < 50.0:
+                    wr = f"{c.wr_event:.1f}% ⚠️ Historis Lemah"
+                else:
+                    wr = f"{c.wr_event:.1f}%"
+            else:
+                wr = "-"
             pot = f"+{c.potential:.0f}%" if c.potential else "-"
             dd = f"{c.drawdown:.0f}%" if c.drawdown else "-"
             lines.append(
@@ -161,3 +177,22 @@ def save_report(content: str, output_dir: str) -> str:
     filepath = out_path / filename
     filepath.write_text(content, encoding="utf-8")
     return str(filepath)
+
+
+def sync_report_to_downloads(
+    report_filepath: str,
+    dest_dirs: list[str] | None = None,
+) -> list[str]:
+    """Sync report to destination directories (e.g. /sdcard/Download/) with explicit UTF-8 encoding."""
+    if dest_dirs is None:
+        dest_dirs = ["/sdcard/Download", "/storage/emulated/0/Download"]
+    content = Path(report_filepath).read_text(encoding="utf-8")
+    synced_paths = []
+    for d in dest_dirs:
+        dest_path = Path(d)
+        if dest_path.exists() and dest_path.is_dir():
+            for fname in [Path(report_filepath).name, "screener_ihsg_terbaru.md"]:
+                target_file = dest_path / fname
+                target_file.write_text(content, encoding="utf-8")
+                synced_paths.append(str(target_file))
+    return synced_paths

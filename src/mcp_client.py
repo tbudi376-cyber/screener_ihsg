@@ -128,7 +128,7 @@ def extract_closes(ohlc_rows: list[OHLCRow]) -> list[float]:
 
 def load_sector_config() -> dict[str, list[str]]:
     path = Path(__file__).parent.parent / "config" / "sectors.json"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

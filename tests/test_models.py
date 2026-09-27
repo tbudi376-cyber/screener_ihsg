@@ -10,13 +10,13 @@ class TestSectorConfig(unittest.TestCase):
 
     def test_sectors_has_11_sectors(self):
         path = Path(__file__).parent.parent / "config" / "sectors.json"
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual(len(data), 11)
 
     def test_each_sector_has_stocks(self):
         path = Path(__file__).parent.parent / "config" / "sectors.json"
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         for sector, stocks in data.items():
             self.assertIsInstance(stocks, list, f"{sector} stocks must be a list")
@@ -26,7 +26,7 @@ class TestSectorConfig(unittest.TestCase):
 
     def test_known_sectors_present(self):
         path = Path(__file__).parent.parent / "config" / "sectors.json"
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         expected = [
             "Energy", "Basic Materials", "Industrials",

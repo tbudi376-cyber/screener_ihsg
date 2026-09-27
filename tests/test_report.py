@@ -1,7 +1,7 @@
 import unittest
 import tempfile
 from pathlib import Path
-from src.report import generate_daily_report, save_report
+from src.report import generate_daily_report, save_report, sync_report_to_downloads
 from src.models import (
     Candidate, Stock, ValidationResult, PivotLevels, TradePlan, QuotaUsageBreakdown,
 )
@@ -157,6 +157,45 @@ class TestReport(unittest.TestCase):
             "2026-09-27", self.sector_ranking, self.candidates, self.validations, breakdown)
         self.assertIn("indeks sektoral resmi BEI (representasi penuh seluruh anggota sektor)", report)
         self.assertNotIn("bukan agregat penuh", report)
+
+    def test_report_shows_historis_lemah_flag_when_wr_below_50(self):
+        """Table 2 displays '⚠️ Historis Lemah' flag when candidate WR Event < 50%."""
+        weak_candidate = Candidate(
+            stock=Stock(code="PTBA", name="Bukit Asam Tbk.", sector="Energy"),
+            bucket="AKUMULASI SENYAP",
+            summary="mode senyap",
+            wr_event=44.6,
+            wr_event_flag="44.6% ⚠️ Historis Lemah",
+        )
+        report = generate_daily_report(
+            "2026-09-27", self.sector_ranking, [weak_candidate], [], QuotaUsageBreakdown()
+        )
+        self.assertIn("44.6% ⚠️ Historis Lemah", report)
+
+    def test_report_does_not_show_historis_lemah_flag_when_wr_above_50(self):
+        """Table 2 displays clean WR Event without flag when >= 50%."""
+        strong_candidate = Candidate(
+            stock=Stock(code="WBSA", name="BSA Logistics Tbk.", sector="Transportation & Logistic"),
+            bucket="SINYAL SENYAP",
+            summary="mode senyap",
+            wr_event=66.7,
+        )
+        report = generate_daily_report(
+            "2026-09-27", self.sector_ranking, [strong_candidate], [], QuotaUsageBreakdown()
+        )
+        self.assertIn("66.7%", report)
+        self.assertNotIn("Historis Lemah", report)
+
+    def test_sync_report_to_downloads_preserves_utf8(self):
+        """Verify sync_report_to_downloads writes valid UTF-8 file with emojis."""
+        with tempfile.TemporaryDirectory() as tmp_out:
+            with tempfile.TemporaryDirectory() as tmp_dl:
+                content = "# Laporan 📊 IHSG 🔴\n• Sinyal 🥷 🟢\n"
+                rpath = save_report(content, tmp_out)
+                synced = sync_report_to_downloads(rpath, dest_dirs=[tmp_dl])
+                self.assertTrue(len(synced) >= 1)
+                read_back = Path(synced[0]).read_text(encoding="utf-8")
+                self.assertEqual(read_back, content)
 
 
 if __name__ == "__main__":

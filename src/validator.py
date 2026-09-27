@@ -1,3 +1,4 @@
+import re
 from src.models import (
     Candidate, OHLCRow, ValidationResult, TradePlan, PivotLevels,
 )
@@ -131,6 +132,77 @@ def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dic
     return metrics
 
 
+def extract_personality_wr_stats(analysis_text: str) -> dict:
+    """Extract historical Win Rate (WR Event) statistics from Personality Historis in analysis text.
+
+    A pattern is considered to have a sufficiently large sample size if its tag is NOT 'SAMPEL KECIL'
+    (e.g., 'SAMPEL VALID', 'EDGE HISTORIS').
+
+    Returns:
+        dict: {
+            "patterns": list of all parsed patterns,
+            "valid_patterns": list of patterns with sufficient sample size,
+            "avg_wr": average WR Event of valid patterns (float | None),
+            "is_weak_history": bool (True if valid patterns exist and avg_wr < 50.0),
+            "flag": warning string (e.g., '44.6% ⚠️ Historis Lemah') or None,
+        }
+    """
+    result = {
+        "patterns": [],
+        "valid_patterns": [],
+        "avg_wr": None,
+        "is_weak_history": False,
+        "flag": None,
+    }
+    if not analysis_text or "PERSONALITY HISTORIS" not in analysis_text:
+        return result
+
+    section = analysis_text.split("PERSONALITY HISTORIS", 1)[1]
+    for stop_word in ["REKOMENDASI", "DISCLAIMER", "###"]:
+        if stop_word in section:
+            section = section.split(stop_word, 1)[0]
+
+    pattern_regex = re.compile(
+        r'(\d+)\.\s+([^\n—–-]+)\s*[—–-]\s*\*{0,2}([^\n*]+)\*{0,2}(.*?)(?=\n\s*\d+\.|\n\s*💡|\n\s*\*\*|\Z)',
+        re.DOTALL,
+    )
+
+    items = pattern_regex.findall(section)
+    for num, title, tag, body in items:
+        clean_tag = tag.strip().upper()
+        wr_match = re.search(r'WR\s+Event\s*([\d\.]+)%', body, re.IGNORECASE)
+        sample_match = re.search(r'Sample\s*(\d+)', body, re.IGNORECASE)
+
+        wr_val = float(wr_match.group(1)) if wr_match else None
+        sample_size = int(sample_match.group(1)) if sample_match else None
+
+        is_valid = True
+        if "SAMPEL KECIL" in clean_tag or "KECIL" in clean_tag:
+            is_valid = False
+
+        pat_info = {
+            "num": int(num),
+            "title": title.strip(),
+            "tag": tag.strip(),
+            "wr_event": wr_val,
+            "sample_size": sample_size,
+            "is_valid_sample": is_valid,
+        }
+        result["patterns"].append(pat_info)
+        if is_valid and wr_val is not None:
+            result["valid_patterns"].append(pat_info)
+
+    if result["valid_patterns"]:
+        valid_wrs = [p["wr_event"] for p in result["valid_patterns"]]
+        avg_wr = sum(valid_wrs) / len(valid_wrs)
+        result["avg_wr"] = round(avg_wr, 1)
+        if avg_wr < 50.0:
+            result["is_weak_history"] = True
+            result["flag"] = f"{avg_wr:.1f}% ⚠️ Historis Lemah"
+
+    return result
+
+
 def assemble_validation(
     candidate: Candidate,
     analysis_text: str,
@@ -155,6 +227,16 @@ def assemble_validation(
             pivot_levels=pivot,
         )
 
+    personality_stats = extract_personality_wr_stats(analysis_text)
+    if personality_stats.get("avg_wr") is not None:
+        if candidate.wr_event is None:
+            candidate.wr_event = personality_stats["avg_wr"]
+    if personality_stats.get("is_weak_history"):
+        wr_disp = candidate.wr_event if candidate.wr_event is not None else personality_stats["avg_wr"]
+        candidate.wr_event_flag = f"{wr_disp:.1f}% ⚠️ Historis Lemah"
+    elif candidate.wr_event is not None and candidate.wr_event < 50.0:
+        candidate.wr_event_flag = f"{candidate.wr_event:.1f}% ⚠️ Historis Lemah"
+
     return ValidationResult(
         stock=candidate.stock,
         analysis_text=analysis_text,
@@ -164,6 +246,7 @@ def assemble_validation(
         trade_plan=trade_plan,
         fundamental_data=fundamental_data or {},
         fallback_reason=fallback_reason,
+        personality_stats=personality_stats,
     )
 
 
@@ -172,6 +255,11 @@ def format_validation_summary(result: ValidationResult) -> str:
     lines.append(f"## {result.stock.code} - {result.stock.name}")
     lines.append(f"**Sector:** {result.stock.sector}")
     lines.append("")
+
+    if result.personality_stats.get("is_weak_history"):
+        avg_wr = result.personality_stats.get("avg_wr")
+        lines.append(f"⚠️ **PERINGATAN HISTORIS**: Rata-rata Win Rate event masa lalu {avg_wr:.1f}% (< 50%). Sinyal memiliki probabilitas historis rendah.")
+        lines.append("")
 
     if result.fallback_reason:
         lines.append("### Catatan Validasi")

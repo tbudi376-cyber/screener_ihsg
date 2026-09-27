@@ -62,6 +62,7 @@ class Candidate:
     potential: float | None = None
     drawdown: float | None = None
     note: str = ""
+    wr_event_flag: str | None = None
 
 
 @dataclass
@@ -74,6 +75,7 @@ class ValidationResult:
     trade_plan: TradePlan | None = None
     fundamental_data: dict = field(default_factory=dict)
     fallback_reason: str = ""
+    personality_stats: dict = field(default_factory=dict)
 
 
 @dataclass
