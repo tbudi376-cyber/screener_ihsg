@@ -172,6 +172,37 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Dilewati dari validasi mendalam untuk menghemat kuota API harian", text)
         self.assertNotIn("No detailed analysis available", text)
 
+    def test_format_validation_shows_rr_warning_when_rr_below_1(self):
+        """Temuan 2: format_validation_summary menampilkan warning saat R:R < 1.0."""
+        pege_candidate = Candidate(
+            stock=Stock(code="PEGE", name="Panca Global Kapital Tbk.", sector="Financials"),
+            bucket="SINYAL BERSIH",
+            summary="Bullish",
+        )
+        # Create minimal 15 rows with low ATR
+        rows = [
+            OHLCRow(
+                date=f"2026-09-{i+1:02d}",
+                open=135.0,
+                high=142.0,
+                low=129.0,
+                close=141.0,
+                volume=1e6,
+                value=140e6,
+            )
+            for i in range(15)
+        ]
+        result = assemble_validation(
+            candidate=pege_candidate,
+            analysis_text="Analisis PEGE",
+            broker_data={},
+            ohlc_rows=rows,
+        )
+        text = format_validation_summary(result)
+        self.assertIn("Trade Plan (Fraksi BEI)", text)
+        if result.trade_plan and result.trade_plan.rr_ratio < 1.0:
+            self.assertIn("⚠️ PERINGATAN R:R < 1.0", text)
+
 
 if __name__ == "__main__":
     unittest.main()

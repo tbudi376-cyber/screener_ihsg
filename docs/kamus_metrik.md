@@ -65,20 +65,26 @@ Berdasarkan audit teknikal, Trade Plan diturunkan langsung dari struktur harga a
 - **Batas Bawah (`entry_low`):** Level Support terdekat ($S1$) jika $S1 < Close$, atau $Close - 0.5 \times ATR$.
 
 ### B. Batas Rugi (Cutloss Invariant)
-- **Aturan Mutlak:** $\text{Cutloss} < \text{Entry Low}$.
-- **Penyesuaian Level:** Jika jarak $Close - ATR$ jatuh di dalam atau di atas $\text{entry\_low}$ (seperti kasus volatilitas rendah pada saham tertentu), cutloss diturunkan ke level Support $S2$ atau diberikan buffer pengaman $\text{entry\_low} - 0.5 \times ATR$.
+- **Aturan Mutlak:** $\text{Cutloss} < \text{Entry Low}$ (Cutloss wajib selalu lebih rendah dari batas bawah zona beli).
+- **Urutan Prioritas Penentuan:**
+  1. **Aturan Utama ($Close - 1.0 \times ATR$):** Menghitung jarak stop-loss berbasis volatilitas riil 14 hari. Jika $Close - ATR < \text{entry\_low}$, nilai ini langsung dipakai sebagai cutloss (contoh: VISI dan PTBA).
+  2. **Fallback Level Pivot ($S2$):** Jika $Close - ATR \ge \text{entry\_low}$ (terjadi saat ATR terlalu sempit sehingga pengurangan ATR masih jatuh di dalam atau di atas batas bawah rentang entry), sistem mengalihkan cutloss ke level Support kedua ($S2$) yang berada di bawah $\text{entry\_low}$ (contoh: PEGE).
+  3. **Fallback Buffer Pengaman:** Jika $S2$ tidak ada atau tidak lebih kecil dari $\text{entry\_low}$, digunakan $\text{entry\_low} - 0.5 \times ATR$.
+  4. **Fraksi Harga BEI:** Semua hasil dibulatkan ke kelipatan tick resmi BEI terdekat ke bawah.
 
 ### C. Target Profit (TP1 & TP2)
 - Diturunkan dari level Resisten Pivot aktual:
   - Jika $R1 \ge Close + 0.4 \times ATR$, maka **Target 1 = $R1$** dan **Target 2 = $R2$**.
   - Jika harga sudah dekat dengan $R1$, maka **Target 1 = $R2$** dan **Target 2 = $R3$**.
 
-### D. Rasio Risk-to-Reward (R:R) Dinamis
+### D. Rasio Risk-to-Reward (R:R) Dinamis & Warning Otomatis
 - Dihitung dari titik tengah area pembelian rata-rata ($\text{entry\_mid}$):
   $$\text{Risk} = \text{entry\_mid} - \text{Cutloss}$$
   $$\text{Reward} = \text{Target 1} - \text{entry\_mid}$$
   $$\text{R:R Ratio} = \frac{\text{Reward}}{\text{Risk}}$$
 - **Sifat:** Bervariasi dinamis antar saham sesuai jarak support-resistance riil masing-masing emiten (tidak lagi kaku 1.5:1).
+- **Proteksi Warning Otomatis ($R:R < 1.0$):**
+  Jika sebuah kandidat menghasilkan $R:R < 1.0$ (seperti kasus PEGE $0.68:1$), sistem otomatis menampilkan peringatan risiko eksplisit di Trade Plan agar pengguna tidak berasumsi semua kandidat top pick otomatis memiliki risk/reward yang menguntungkan, dan menyarankan antri di batas bawah $\text{entry\_low}$.
 
 ---
 

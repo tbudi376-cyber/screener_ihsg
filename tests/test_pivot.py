@@ -161,6 +161,71 @@ class TestPivot(unittest.TestCase):
         self.assertGreater(atr, 0)
         self.assertIsInstance(atr, float)
 
+    def test_cutloss_prefers_atr_when_below_entry_low(self):
+        """Temuan 1: Cutloss memilih Close - ATR jika berada di bawah entry_low, fallback ke S2 jika tidak."""
+        # Kasus 1: VISI -> Close 1390, ATR 95.7, entry_low 1335.
+        # Close - ATR = 1294.3 < 1335. Cutloss harus 1295 (ATR-based), bukan S2 (1285).
+        visi_pivots = PivotLevels(
+            pivot=1373.0, r1=1427.0, r2=1463.0, r3=1517.0,
+            s1=1337.0, s2=1283.0, s3=1247.0
+        )
+        visi_plan = calculate_trade_plan(
+            close=1390.0, atr=95.7, support=1337.0, pivot_levels=visi_pivots
+        )
+        self.assertEqual(visi_plan.cutloss, 1295)
+        self.assertLess(visi_plan.cutloss, visi_plan.entry_low)
+
+        # Kasus 2: PTBA -> Close 3090, ATR 100, entry_low 3030.
+        # Close - ATR = 2990 < 3030. Cutloss harus 2990 (ATR-based), bukan S2 (2980).
+        ptba_pivots = PivotLevels(
+            pivot=3087.0, r1=3143.0, r2=3197.0, r3=3253.0,
+            s1=3033.0, s2=2977.0, s3=2923.0
+        )
+        ptba_plan = calculate_trade_plan(
+            close=3090.0, atr=100.0, support=3033.0, pivot_levels=ptba_pivots
+        )
+        self.assertEqual(ptba_plan.cutloss, 2990)
+        self.assertLess(ptba_plan.cutloss, ptba_plan.entry_low)
+
+        # Kasus 3: PEGE -> Close 141, ATR 8.21, entry_low 129.
+        # Close - ATR = 132.79 >= 129 (jatuh di dalam entry range).
+        # Fallback ke S2 (116). Cutloss harus 116.
+        pege_pivots = PivotLevels(
+            pivot=135.0, r1=148.0, r2=154.0, r3=167.0,
+            s1=129.0, s2=116.0, s3=110.0
+        )
+        pege_plan = calculate_trade_plan(
+            close=141.0, atr=8.21, support=129.0, pivot_levels=pege_pivots
+        )
+        self.assertEqual(pege_plan.cutloss, 116)
+        self.assertLess(pege_plan.cutloss, pege_plan.entry_low)
+
+    def test_trade_plan_rr_warning_when_rr_below_1(self):
+        """Temuan 2: Trade plan menghasilkan warning saat R:R < 1.0."""
+        # PEGE has R:R = 0.68:1 (< 1.0)
+        pege_pivots = PivotLevels(
+            pivot=135.0, r1=148.0, r2=154.0, r3=167.0,
+            s1=129.0, s2=116.0, s3=110.0
+        )
+        plan = calculate_trade_plan(
+            close=141.0, atr=8.21, support=129.0, pivot_levels=pege_pivots
+        )
+        self.assertLess(plan.rr_ratio, 1.0)
+        self.assertTrue(bool(plan.warning))
+        self.assertIn("PERINGATAN R:R < 1.0", plan.warning)
+        self.assertIn("0.68:1", plan.warning)
+
+        # Stock with healthy R:R >= 1.0 should have empty warning
+        visi_pivots = PivotLevels(
+            pivot=1373.0, r1=1427.0, r2=1463.0, r3=1517.0,
+            s1=1337.0, s2=1283.0, s3=1247.0
+        )
+        plan_visi = calculate_trade_plan(
+            close=1390.0, atr=95.7, support=1337.0, pivot_levels=visi_pivots
+        )
+        self.assertGreaterEqual(plan_visi.rr_ratio, 1.0)
+        self.assertEqual(plan_visi.warning, "")
+
 
 if __name__ == "__main__":
     unittest.main()

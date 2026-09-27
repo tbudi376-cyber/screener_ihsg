@@ -232,6 +232,8 @@ def format_validation_summary(result: ValidationResult) -> str:
         lines.append(f"  Target 2: Rp{tp.target2:,.0f} (Resisten Lanjutan)")
         lines.append(f"  R:R Ratio: {tp.rr_ratio}:1")
         lines.append(f"  ATR(14): Rp{tp.atr:,.2f}")
+        if tp.warning:
+            lines.append(f"  {tp.warning}")
         lines.append("")
 
     if result.broker_data.get("brokers"):

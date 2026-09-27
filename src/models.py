@@ -50,6 +50,7 @@ class TradePlan:
     target2: float
     rr_ratio: float
     atr: float
+    warning: str = ""
 
 
 @dataclass

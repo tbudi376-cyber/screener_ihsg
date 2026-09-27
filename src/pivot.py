@@ -101,14 +101,15 @@ def calculate_trade_plan(
     if entry_low >= entry_high:
         entry_low = entry_high - get_idx_tick_size(entry_high)
 
-    # 1. Determine Cutloss: Must be strictly below entry_low
-    buffer = max(0.5 * atr, 1.0)
+    # 1. Determine Cutloss: Primary rule is Close - 1.0 * ATR
+    # Fallback to S2 or buffer only if Close - ATR falls inside or above entry_low
     atr_cutloss = close - 1.0 * atr
+    buffer = max(0.5 * atr, 1.0)
 
-    if pivot_levels and pivot_levels.s2 < entry_low:
-        candidate_cl = min(entry_low - buffer, pivot_levels.s2)
-    elif atr_cutloss < entry_low:
+    if atr_cutloss < entry_low:
         candidate_cl = atr_cutloss
+    elif pivot_levels and pivot_levels.s2 < entry_low:
+        candidate_cl = pivot_levels.s2
     else:
         candidate_cl = entry_low - buffer
 
@@ -143,6 +144,14 @@ def calculate_trade_plan(
     reward = target1 - entry_mid
     rr_ratio = round(reward / risk, 2) if risk > 0 else 0.0
 
+    warning = ""
+    if rr_ratio < 1.0:
+        warning = (
+            f"⚠️ PERINGATAN R:R < 1.0 ({rr_ratio:.2f}:1): Potensi risiko lebih besar daripada "
+            f"reward ke Target 1 jika entry di harga rata-rata/mid (Rp{entry_mid:,.0f}). Disarankan menunggu "
+            f"pelemahan (buy on weakness) mendekati batas bawah Rp{entry_low:,.0f} untuk memperbaiki rasio risk-to-reward."
+        )
+
     return TradePlan(
         entry_low=entry_low,
         entry_high=entry_high,
@@ -151,4 +160,5 @@ def calculate_trade_plan(
         target2=target2,
         rr_ratio=rr_ratio,
         atr=round(atr, 2),
+        warning=warning,
     )
