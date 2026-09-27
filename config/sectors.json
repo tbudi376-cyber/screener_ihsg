@@ -1,0 +1,13 @@
+{
+  "Energy": ["ADRO", "PTBA", "MEDC", "PGAS", "AKRA", "ELSA", "RAJA", "ESSA", "BREN", "TPIA"],
+  "Basic Materials": ["INKP", "TKIM", "INTP", "SMGR", "BRPT", "MDKA", "ANTM", "INCO", "ADMR", "TINS"],
+  "Industrials": ["ASII", "UNTR", "HEXA", "IMPC", "ARNA", "SGER", "MASA", "BRMS", "AUTO", "GJTL"],
+  "Consumer Non-Cyclicals": ["ICBP", "INDF", "CPIN", "HMSP", "GGRM", "CMRY", "JPFA", "MYOR", "ROTI", "ULTJ", "UNVR"],
+  "Consumer Cyclicals": ["ERAA", "ACES", "MAPI", "LPPF", "RALS", "MSIN", "PGEO", "EMTK", "MAPA", "DSSA"],
+  "Healthcare": ["HEAL", "SILO", "MIKA", "PRDA", "DVLA", "TSPC", "PYFA", "SOHO", "KLBF", "SIDO"],
+  "Financials": ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS", "BBTN", "PNBN", "NISP", "BTPS", "BNGA", "ARTO", "BJTM", "MEGA", "BDMN", "BBYB"],
+  "Properties & Real Estate": ["BSDE", "CTRA", "SMRA", "PWON", "LPKR", "DILD", "APLN", "JRPT", "PPRO", "MKPI"],
+  "Technology": ["GOTO", "BUKA", "DCII", "CASH", "EDGE", "MTDL", "LUCK", "TECH", "DMMX", "NELY"],
+  "Infrastructures": ["TLKM", "TOWR", "TBIG", "JSMR", "WIKA", "WSKT", "PTPP", "ACST", "ISAT", "EXCL"],
+  "Transportation & Logistic": ["GIAA", "BIRD", "SMDR", "TMAS", "ASSA", "JAYA", "BLTA", "SAFE", "HELI", "SAPX"]
+}
