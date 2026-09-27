@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 
 from src.main import run_pipeline
-from src.models import OHLCRow
+from src.models import OHLCRow, QuotaUsageBreakdown
 
 
 class TestMainPipeline(unittest.TestCase):
@@ -33,22 +33,22 @@ class TestMainPipeline(unittest.TestCase):
             ]
         }
 
-        # Benchmark: 25 days of closes
+        # Benchmark: 25 days of closes in oldest-to-newest order
         bench_closes = [7000 + i * 10 for i in range(25)]
         benchmark_ohlc = [
             OHLCRow(
-                date=f"2026-09-{25-i:02d}",
+                date=f"2026-09-{i+1:02d}",
                 open=7000,
                 high=7050,
                 low=6950,
-                close=bench_closes[24 - i],
+                close=bench_closes[i],
                 volume=1e9,
                 value=7e12,
             )
             for i in range(25)
         ]
 
-        # Sector stock closes
+        # Sector stock closes (oldest-to-newest)
         sector_stock_closes = {
             "Financials": {
                 "BBCA": [6000 + i * 20 for i in range(25)],
@@ -58,18 +58,19 @@ class TestMainPipeline(unittest.TestCase):
             },
         }
 
+        # Candidate OHLC in oldest-to-newest order
         bbca_ohlc = [
             OHLCRow(
-                date=f"2026-09-{25-i:02d}",
+                date=f"2026-09-{i+1:02d}",
                 open=6200,
                 high=6275,
                 low=6200,
-                close=6250 - i * 10,
+                close=6200 + i * 5,
                 volume=89e6,
                 value=558e9,
                 f_buy=73e6,
                 f_sell=57e6,
-                n_foreign=16.5e6 - i * 1e6,
+                n_foreign=10e6 + i * 1e6,
             )
             for i in range(20)
         ]
@@ -83,8 +84,24 @@ class TestMainPipeline(unittest.TestCase):
                     ]
                 },
                 "ohlc_rows": bbca_ohlc,
+                "fundamental_data": {
+                    "eps": 85.0,
+                    "per": 18.2,
+                    "der": 0.75,
+                }
             }
         }
+
+        quota_breakdown = QuotaUsageBreakdown(
+            screener_calls=1,
+            benchmark_calls=1,
+            rrg_sector_calls=2,
+            rrg_sectors_processed=2,
+            rrg_stocks_processed=2,
+            validation_calls=5,
+            validation_stocks_processed=1,
+            total_calls=9,
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             report_path = run_pipeline(
@@ -93,7 +110,7 @@ class TestMainPipeline(unittest.TestCase):
                 sector_stock_closes=sector_stock_closes,
                 validations_data=validations_data,
                 output_dir=tmpdir,
-                quota_used=15,
+                quota_used=quota_breakdown,
             )
 
             self.assertTrue(Path(report_path).exists())
@@ -102,7 +119,9 @@ class TestMainPipeline(unittest.TestCase):
             self.assertIn("Financials", content)
             self.assertIn("BBCA", content)
             self.assertIn("Trade Plan", content)
-            self.assertIn("15 request", content)
+            self.assertIn("Rincian Penggunaan Kuota API per Modul", content)
+            self.assertIn("9 request", content)
+            self.assertIn("Kamus Metrik & Sumber Data", content)
 
 
 if __name__ == "__main__":

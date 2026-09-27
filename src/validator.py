@@ -31,8 +31,38 @@ def build_validation_request_list(candidate: Candidate) -> list[McpCallRequest]:
     ]
 
 
-def parse_foreign_flow_5d(ohlc_rows: list[OHLCRow]) -> list[float]:
-    return [row.n_foreign for row in ohlc_rows[:5]]
+def parse_foreign_flow_5d(ohlc_rows: list[OHLCRow]) -> list[tuple[float, float]]:
+    """Parse net foreign flow for the latest 5 trading days with estimated Rupiah value.
+
+    Official system convention: ohlc_rows is ordered oldest-to-newest.
+    Returns [(shares_D0, rupiah_D0), (shares_D1, rupiah_D1), ...]
+    where D0 is the most recent trading day (ohlc_rows[-1]).
+    Estimated Rupiah value is calculated as: n_foreign * close_price.
+    """
+    if not ohlc_rows:
+        return []
+    recent_5 = ohlc_rows[-5:]
+    results = []
+    # Reverse to produce D-0 (latest), D-1, D-2, D-3, D-4
+    for row in reversed(recent_5):
+        shares = row.n_foreign
+        rupiah_val = shares * row.close
+        results.append((shares, rupiah_val))
+    return results
+
+
+def format_rupiah_compact(val: float) -> str:
+    """Format Rupiah value into clean compact string (Rp...B or Rp...M)."""
+    sign = "+" if val > 0 else "-"
+    abs_val = abs(val)
+    if abs_val >= 1e12:
+        return f"{sign}Rp{abs_val / 1e12:,.2f}T"
+    elif abs_val >= 1e9:
+        return f"{sign}Rp{abs_val / 1e9:,.2f}B"
+    elif abs_val >= 1e6:
+        return f"{sign}Rp{abs_val / 1e6:,.2f}M"
+    else:
+        return f"{sign}Rp{abs_val:,.0f}"
 
 
 def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dict:
@@ -90,7 +120,6 @@ def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dic
             metrics["der"] = round(liab / eq, 2)
 
     if close_price and metrics["eps"] and metrics["eps"] > 0:
-        # Annualized quarterly approximation (EPS * 4)
         annualized_eps = metrics["eps"] * 4
         metrics["per"] = round(close_price / annualized_eps, 2)
 
@@ -105,7 +134,8 @@ def assemble_validation(
     fundamental_data: dict | None = None,
     fallback_reason: str = "",
 ) -> ValidationResult:
-    latest = ohlc_rows[0] if ohlc_rows else None
+    # Official convention: ohlc_rows is ordered oldest-to-newest, so index -1 is the latest candle
+    latest = ohlc_rows[-1] if ohlc_rows else None
     pivot = None
     trade_plan = None
     foreign_flow_5d = parse_foreign_flow_5d(ohlc_rows)
@@ -172,9 +202,15 @@ def format_validation_summary(result: ValidationResult) -> str:
 
     lines.append("### Net Foreign Flow (5D)")
     if result.foreign_flow_5d:
-        for i, flow in enumerate(result.foreign_flow_5d):
-            direction = "BUY" if flow > 0 else "SELL"
-            lines.append(f"  D-{i}: {flow:+,.0f} shares ({direction})")
+        for i, item in enumerate(result.foreign_flow_5d):
+            if isinstance(item, (list, tuple)):
+                shares = item[0]
+                idr_str = f" ({format_rupiah_compact(item[1])})"
+            else:
+                shares = float(item)
+                idr_str = ""
+            direction = "BUY" if shares > 0 else "SELL"
+            lines.append(f"  D-{i}: {shares:+,.0f} shares{idr_str} ({direction})")
     else:
         lines.append("  Data foreign flow harian tidak ditarik untuk saham ini.")
     lines.append("")
@@ -189,13 +225,13 @@ def format_validation_summary(result: ValidationResult) -> str:
 
     if result.trade_plan:
         tp = result.trade_plan
-        lines.append("### Trade Plan")
-        lines.append(f"  Entry Range: {tp.entry_low:,.0f} - {tp.entry_high:,.0f}")
-        lines.append(f"  Cutloss: {tp.cutloss:,.0f} (Proteksi di bawah Entry Range)")
-        lines.append(f"  Target 1: {tp.target1:,.0f} (Resisten Terdekat)")
-        lines.append(f"  Target 2: {tp.target2:,.0f} (Resisten Lanjutan)")
+        lines.append("### Trade Plan (Fraksi BEI)")
+        lines.append(f"  Entry Range: Rp{tp.entry_low:,.0f} - Rp{tp.entry_high:,.0f}")
+        lines.append(f"  Cutloss: Rp{tp.cutloss:,.0f} (Proteksi di bawah Entry Range)")
+        lines.append(f"  Target 1: Rp{tp.target1:,.0f} (Resisten Terdekat)")
+        lines.append(f"  Target 2: Rp{tp.target2:,.0f} (Resisten Lanjutan)")
         lines.append(f"  R:R Ratio: {tp.rr_ratio}:1")
-        lines.append(f"  ATR(14): {tp.atr:,.2f}")
+        lines.append(f"  ATR(14): Rp{tp.atr:,.2f}")
         lines.append("")
 
     if result.broker_data.get("brokers"):

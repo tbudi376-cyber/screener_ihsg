@@ -95,7 +95,14 @@ class McpClient:
 
     @staticmethod
     def parse_ohlc_rows(api_rows: list[dict]) -> list[OHLCRow]:
-        return [
+        """Parse raw API rows and sort ascending by date (oldest-to-newest).
+
+        The idx-edge API returns newest-first rows. This parser guarantees
+        that the resulting list is sorted in strict chronological order
+        (oldest-to-newest: ohlc_rows[0] is oldest, ohlc_rows[-1] is newest),
+        which is the single official convention across the entire codebase.
+        """
+        rows = [
             OHLCRow(
                 date=r.get("date", ""),
                 open=float(r.get("open", 0)),
@@ -110,6 +117,13 @@ class McpClient:
             )
             for r in api_rows
         ]
+        rows.sort(key=lambda r: r.date)
+        return rows
+
+
+def extract_closes(ohlc_rows: list[OHLCRow]) -> list[float]:
+    """Extract closing prices from an OHLCRow series in chronological order."""
+    return [r.close for r in ohlc_rows]
 
 
 def load_sector_config() -> dict[str, list[str]]:

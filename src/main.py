@@ -16,8 +16,10 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.mcp_client import McpClient, load_sector_config
-from src.models import OHLCRow, Candidate, Stock, ValidationResult, RRGPoint
+from src.mcp_client import McpClient, load_sector_config, extract_closes
+from src.models import (
+    OHLCRow, Candidate, Stock, ValidationResult, RRGPoint, QuotaUsageBreakdown,
+)
 from src.sector_rrg import compute_rrg_for_stock, rank_sectors
 from src.screener import parse_screener_rows, filter_by_sectors, filter_by_bucket, rank_candidates
 from src.validator import assemble_validation, build_validation_request_list
@@ -92,7 +94,7 @@ def run_pipeline(
     sector_stock_closes: dict[str, dict[str, list[float]]],
     validations_data: dict[str, dict],
     output_dir: str | None = None,
-    quota_used: int = 0,
+    quota_used: int | QuotaUsageBreakdown = 0,
     date_str: str | None = None,
 ) -> str:
     """Execute the end-to-end screening and validation pipeline, returning saved report path."""
@@ -105,7 +107,8 @@ def run_pipeline(
     all_candidates = parse_screener_rows(raw_rows, config["sector_config"])
 
     # 2. Compute RRG for sectors vs benchmark
-    bench_closes = [r.close for r in reversed(benchmark_ohlc)]  # oldest to newest
+    # Official convention: benchmark_ohlc is ordered oldest-to-newest
+    bench_closes = extract_closes(benchmark_ohlc)
     sector_points: dict[str, list[RRGPoint]] = {}
     for sector, stocks_data in sector_stock_closes.items():
         points = []

@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from src.models import Candidate, ValidationResult
+from src.models import Candidate, ValidationResult, QuotaUsageBreakdown
 from src.validator import format_validation_summary
 
 
@@ -9,12 +9,29 @@ def generate_daily_report(
     sector_ranking: list[tuple],
     candidates: list[Candidate],
     validations: list[ValidationResult],
-    quota_used: int,
+    quota_used: int | QuotaUsageBreakdown,
 ) -> str:
     lines = []
     lines.append(f"# Screener IHSG - Laporan Harian {date}")
     lines.append(f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_")
-    lines.append(f"_Kuota API terpakai: {quota_used} request_")
+
+    if isinstance(quota_used, QuotaUsageBreakdown):
+        lines.append(f"_Kuota API terpakai: {quota_used.total_calls} request_")
+        lines.append("")
+        lines.append("### Rincian Penggunaan Kuota API per Modul:")
+        lines.append(f"- **Screener Awal**: {quota_used.screener_calls} request (`screener_saham_terkini`)")
+        lines.append(f"- **Benchmark IHSG**: {quota_used.benchmark_calls} request (`riwayat_harga` BBCA proxy 60D)")
+        lines.append(
+            f"- **RRG Sektor**: {quota_used.rrg_sector_calls} request "
+            f"({quota_used.rrg_sectors_processed} sektor, {quota_used.rrg_stocks_processed} saham)"
+        )
+        lines.append(
+            f"- **Validasi Mendalam**: {quota_used.validation_calls} request "
+            f"({quota_used.validation_stocks_processed} saham kandidat divalidasi mendalam)"
+        )
+    else:
+        lines.append(f"_Kuota API terpakai: {quota_used} request_")
+
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -78,8 +95,10 @@ def generate_daily_report(
     lines.append("")
     lines.append("3. **Net Foreign Flow (Aliran Dana Asing Murni)** — _Sumber: `idx-edge:riwayat_harga` (`n_foreign`)_")
     lines.append("   - Menampilkan selisih lembar saham beli vs jual oleh investor tipe Asing (Foreign) murni, bukan estimasi formula tertutup.")
+    lines.append("   - Dilengkapi konversi nilai estimasi Rupiah (`n_foreign * close`) untuk komparasi langsung dengan nilai transaksi Top Brokers.")
     lines.append("")
     lines.append("4. **Trade Plan & Pivot Levels** — _Sumber: Perhitungan lokal `src/pivot.py` dari OHLC harian_")
+    lines.append("   - Mengikuti fraksi harga resmi BEI (Kep-00023/BEI/03-2020).")
     lines.append("   - Cutloss divalidasi ketat selalu di bawah batas bawah Entry Range (S1/S2/buffer ATR).")
     lines.append("   - Target 1 & Target 2 diturunkan dari level resisten Pivot aktual (R1, R2, R3).")
     lines.append("")

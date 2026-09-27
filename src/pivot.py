@@ -1,6 +1,36 @@
 from src.models import PivotLevels, OHLCRow, TradePlan
 
 
+def get_idx_tick_size(price: float) -> int:
+    """Return the official IDX (Bursa Efek Indonesia) tick size for a given price level.
+
+    BEI Price Fractions (Keputusan Direksi PT BEI Nomor Kep-00023/BEI/03-2020):
+    - < Rp200: kelipatan Rp1
+    - Rp200 s/d < Rp500: kelipatan Rp2
+    - Rp500 s/d < Rp2.000: kelipatan Rp5
+    - Rp2.000 s/d < Rp5.000: kelipatan Rp10
+    - >= Rp5.000: kelipatan Rp25
+    """
+    if price < 200:
+        return 1
+    elif price < 500:
+        return 2
+    elif price < 2000:
+        return 5
+    elif price < 5000:
+        return 10
+    else:
+        return 25
+
+
+def round_to_idx_tick(price: float) -> int:
+    """Round a price to the nearest official IDX price fraction (tick size)."""
+    if price <= 0:
+        return 0
+    tick = get_idx_tick_size(price)
+    return int(round(price / tick) * tick)
+
+
 def calculate_pivot(high: float, low: float, close: float) -> PivotLevels:
     pivot = (high + low + close) / 3
     r1 = 2 * pivot - low
@@ -21,13 +51,18 @@ def calculate_pivot(high: float, low: float, close: float) -> PivotLevels:
 
 
 def calculate_atr(ohlc_rows: list[OHLCRow], period: int = 14) -> float:
+    """Calculate Average True Range (ATR) over period candles.
+
+    Official system convention: ohlc_rows is ordered oldest-to-newest.
+    ohlc_rows[0] is the oldest candle, ohlc_rows[-1] is the most recent candle.
+    """
     if len(ohlc_rows) < 2:
         raise ValueError(f"Need at least 2 rows for ATR, got {len(ohlc_rows)}")
 
     true_ranges = []
-    for i in range(len(ohlc_rows) - 1):
+    for i in range(1, len(ohlc_rows)):
         current = ohlc_rows[i]
-        prev = ohlc_rows[i + 1]
+        prev = ohlc_rows[i - 1]
         tr = max(
             current.high - current.low,
             abs(current.high - prev.close),
@@ -35,7 +70,7 @@ def calculate_atr(ohlc_rows: list[OHLCRow], period: int = 14) -> float:
         )
         true_ranges.append(tr)
 
-    use = true_ranges[:period]
+    use = true_ranges[-period:]
     if not use:
         raise ValueError("Not enough data to calculate ATR")
     return sum(use) / len(use)
@@ -50,63 +85,67 @@ def calculate_trade_plan(
     """Calculate trade plan derived from actual price structure and pivot levels.
 
     Guarantees:
+    - All output prices (entry_low, entry_high, cutloss, target1, target2) are
+      rounded to official IDX price tick fractions (Kep-00023/BEI/03-2020).
     - Cutloss is strictly below entry_low (cutloss < entry_low) for all candidates.
     - If ATR is smaller than the entry range width (close - entry_low), cutloss
       is adjusted based on S2 or swing level below entry_low with an ATR buffer.
     - Target 1 & 2 are derived from actual resistance levels (R1, R2, R3).
     - R:R ratio varies dynamically according to each stock's technical structure.
     """
-    entry_high = close
-    entry_low = support if (support and support < close) else (close - 0.5 * atr)
+    raw_entry_high = close
+    raw_entry_low = support if (support and support < close) else (close - 0.5 * atr)
+
+    entry_high = round_to_idx_tick(raw_entry_high)
+    entry_low = round_to_idx_tick(raw_entry_low)
+    if entry_low >= entry_high:
+        entry_low = entry_high - get_idx_tick_size(entry_high)
 
     # 1. Determine Cutloss: Must be strictly below entry_low
     buffer = max(0.5 * atr, 1.0)
-
-    # Candidate cutloss from ATR subtraction from close
     atr_cutloss = close - 1.0 * atr
 
     if pivot_levels and pivot_levels.s2 < entry_low:
-        # If S2 is available below entry_low, use S2 or entry_low minus buffer
         candidate_cl = min(entry_low - buffer, pivot_levels.s2)
     elif atr_cutloss < entry_low:
         candidate_cl = atr_cutloss
     else:
-        # ATR is too small relative to entry range width; anchor below entry_low
         candidate_cl = entry_low - buffer
 
-    cutloss = round(candidate_cl, 0)
+    cutloss = round_to_idx_tick(candidate_cl)
     # Strict safety invariant: cutloss MUST be strictly lower than entry_low
     if cutloss >= entry_low:
-        cutloss = round(entry_low - buffer, 0)
+        cutloss = entry_low - get_idx_tick_size(entry_low)
 
     # 2. Determine Targets from Pivot Resistance (R1, R2, R3)
     if pivot_levels:
-        # If R1 is sufficiently above close (> 0.4x ATR), use R1 as Target 1
         if pivot_levels.r1 >= close + 0.4 * atr:
-            target1 = pivot_levels.r1
-            target2 = pivot_levels.r2 if pivot_levels.r2 > target1 else (target1 + 1.0 * atr)
+            raw_t1 = pivot_levels.r1
+            raw_t2 = pivot_levels.r2 if pivot_levels.r2 > raw_t1 else (raw_t1 + 1.0 * atr)
         else:
-            # If price is already near or above R1, aim for R2 as Target 1 and R3 as Target 2
-            target1 = pivot_levels.r2 if pivot_levels.r2 > close else (close + 1.5 * atr)
-            target2 = pivot_levels.r3 if pivot_levels.r3 > target1 else (target1 + 1.0 * atr)
+            raw_t1 = pivot_levels.r2 if pivot_levels.r2 > close else (close + 1.5 * atr)
+            raw_t2 = pivot_levels.r3 if pivot_levels.r3 > raw_t1 else (raw_t1 + 1.0 * atr)
     else:
-        target1 = close + 1.5 * atr
-        target2 = close + 2.5 * atr
+        raw_t1 = close + 1.5 * atr
+        raw_t2 = close + 2.5 * atr
 
-    # Sanity check: targets must be above entry_high
-    target1 = round(max(target1, close + 0.5 * atr), 0)
-    target2 = round(max(target2, target1 + 0.5 * atr), 0)
+    target1 = round_to_idx_tick(raw_t1)
+    if target1 <= entry_high:
+        target1 = entry_high + get_idx_tick_size(entry_high)
+
+    target2 = round_to_idx_tick(raw_t2)
+    if target2 <= target1:
+        target2 = target1 + get_idx_tick_size(target1)
 
     # 3. Dynamic R:R ratio based on actual price structure
-    # Calculated from the midpoint of the entry range (realistic accumulation cost)
     entry_mid = (entry_low + entry_high) / 2
     risk = entry_mid - cutloss
     reward = target1 - entry_mid
     rr_ratio = round(reward / risk, 2) if risk > 0 else 0.0
 
     return TradePlan(
-        entry_low=round(entry_low, 0),
-        entry_high=round(entry_high, 0),
+        entry_low=entry_low,
+        entry_high=entry_high,
         cutloss=cutloss,
         target1=target1,
         target2=target2,

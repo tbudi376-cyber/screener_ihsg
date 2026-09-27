@@ -73,3 +73,16 @@ class ValidationResult:
     trade_plan: TradePlan | None = None
     fundamental_data: dict = field(default_factory=dict)
     fallback_reason: str = ""
+
+
+@dataclass
+class QuotaUsageBreakdown:
+    screener_calls: int = 1
+    benchmark_calls: int = 1
+    rrg_sector_calls: int = 0
+    rrg_sectors_processed: int = 0
+    rrg_stocks_processed: int = 0
+    validation_calls: int = 0
+    validation_stocks_processed: int = 0
+    total_calls: int = 0
+    details: list[str] = field(default_factory=list)

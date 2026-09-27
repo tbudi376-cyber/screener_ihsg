@@ -19,17 +19,31 @@ class TestValidator(unittest.TestCase):
             potential=11.0,
             drawdown=-5.0,
         )
+        # Oldest-to-newest convention: index 0 is oldest, index 19 is newest (2026-09-25)
         self.ohlc_rows = [
-            OHLCRow(date=f"2026-09-{25-i:02d}", open=6225, high=6275,
-                    low=6200, close=6250-i*25, volume=89e6, value=558e9,
-                    f_buy=73e6, f_sell=57e6, n_foreign=16.5e6 - i * 5e6)
+            OHLCRow(
+                date=f"2026-09-{i+1:02d}",
+                open=6200,
+                high=6275,
+                low=6180,
+                close=6250,
+                volume=89e6,
+                value=558e9,
+                f_buy=73e6,
+                f_sell=57e6,
+                n_foreign=10e6 + i * 1e6,  # 10M up to 29M
+            )
             for i in range(20)
         ]
 
     def test_parse_foreign_flow_5d(self):
+        """Poin 2 & 4: 5 hari terakhir dihitung dari data oldest-to-newest beserta estimasi Rupiah."""
         flows = parse_foreign_flow_5d(self.ohlc_rows)
         self.assertEqual(len(flows), 5)
-        self.assertEqual(flows[0], self.ohlc_rows[0].n_foreign)
+        # D-0 is the newest day (index 19): 10M + 19M = 29M shares
+        d0_shares, d0_idr = flows[0]
+        self.assertEqual(d0_shares, 29e6)
+        self.assertEqual(d0_idr, 29e6 * 6250)
 
     def test_parse_foreign_flow_short_data(self):
         short = self.ohlc_rows[:3]
@@ -61,7 +75,8 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Trade Plan", text)
         self.assertGreater(len(text), 100)
 
-    def test_format_includes_foreign_flow(self):
+    def test_format_includes_foreign_flow_with_rupiah_value(self):
+        """Poin 4: Tampilkan nilai estimasi Rupiah berdampingan dengan jumlah lembar saham."""
         result = assemble_validation(
             candidate=self.candidate,
             analysis_text="Test",
@@ -70,11 +85,13 @@ class TestValidator(unittest.TestCase):
         )
         text = format_validation_summary(result)
         self.assertIn("Foreign Flow", text)
+        self.assertIn("shares", text)
+        # Must show estimated Rupiah value in B or M (e.g. +Rp181.25B)
+        self.assertIn("Rp", text)
         self.assertNotIn("Money Flow", text,
                          "Must use 'Foreign Flow', not 'Money Flow' (data honesty)")
 
     def test_extract_fundamental_metrics(self):
-        """Audit Check 3: Ekstraksi rasio fundamental dari laporan_keuangan."""
         mock_fin_data = {
             "INCOME_STATEMENT": {
                 "items": [
@@ -112,13 +129,12 @@ class TestValidator(unittest.TestCase):
         }
         metrics = extract_fundamental_metrics(mock_fin_data, close_price=3000.0)
         self.assertEqual(metrics["eps"], 85.0)
-        self.assertEqual(metrics["der"], 0.75)  # 15T / 20T
-        self.assertEqual(metrics["revenue_growth_yoy"], 25.0)  # (10-8)/8 * 100
+        self.assertEqual(metrics["der"], 0.75)
+        self.assertEqual(metrics["revenue_growth_yoy"], 25.0)
         self.assertEqual(metrics["net_income_growth_yoy"], 25.0)
         self.assertIsNotNone(metrics["per"])
 
     def test_format_validation_with_fundamentals(self):
-        """Audit Check 3: Format output menampilkan data fundamental."""
         result = assemble_validation(
             candidate=self.candidate,
             analysis_text="Test analysis",
@@ -139,7 +155,6 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Pertumbuhan Pendapatan", text)
 
     def test_format_validation_fallback_reason(self):
-        """Audit Check 4: Fallback message informatif dan tidak kosong tanpa alasan."""
         amrt_candidate = Candidate(
             stock=Stock(code="AMRT", name="Sumber Alfaria Trijaya Tbk.", sector="Consumer Non-Cyclicals"),
             bucket="AKUMULASI SENYAP",
