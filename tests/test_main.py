@@ -132,6 +132,118 @@ class TestMainPipeline(unittest.TestCase):
             self.assertIn("RRG berbasis sampel 5 saham representatif per sektor", content)
             self.assertIn("Kamus Metrik & Sumber Data", content)
 
+    def test_run_pipeline_strict_sector_filter_excludes_non_favored(self):
+        """Verify strict hard filter PRD 7.3: stocks from non-favored sectors are excluded."""
+        screener_data = {
+            "rows": [
+                {
+                    "stock_code": "PEGE",
+                    "stock_name": "Panca Global Kapital Tbk.",
+                    "bucket": "SINYAL BERSIH",
+                    "summary": "asing beli kuat",
+                    "wr_event": 74.1,
+                    "potential": 11.0,
+                    "drawdown": -5.0,
+                    "note": "",
+                },
+                {
+                    "stock_code": "WBSA",
+                    "stock_name": "BSA Logistics Indonesia Tbk.",
+                    "bucket": "SINYAL SENYAP",
+                    "summary": "top broker akumulasi",
+                    "wr_event": 66.7,
+                    "potential": 8.0,
+                    "drawdown": -3.0,
+                    "note": "",
+                },
+                {
+                    "stock_code": "PTBA",
+                    "stock_name": "Bukit Asam Tbk.",
+                    "bucket": "AKUMULASI SENYAP",
+                    "summary": "mode senyap",
+                    "wr_event": None,
+                    "potential": None,
+                    "drawdown": None,
+                    "note": "",
+                },
+                {
+                    "stock_code": "VISI",
+                    "stock_name": "Satu Visi Putra Tbk.",
+                    "bucket": "SINYAL SENYAP",
+                    "summary": "asing beli",
+                    "wr_event": 65.2,
+                    "potential": 8.0,
+                    "drawdown": -3.0,
+                    "note": "",
+                },
+            ]
+        }
+
+        bench_closes = [7000 + i * 10 for i in range(25)]
+        benchmark_ohlc = [
+            OHLCRow(
+                date=f"2026-09-{i+1:02d}",
+                open=7000,
+                high=7050,
+                low=6950,
+                close=bench_closes[i],
+                volume=1e9,
+                value=7e12,
+            )
+            for i in range(25)
+        ]
+
+        # Energy & Transportation are Leading; Financials & Basic Materials are Lagging
+        sector_stock_closes = {
+            "Energy": {
+                f"E_{k}": [2000 + i * 30 for i in range(25)] for k in range(5)
+            },
+            "Transportation & Logistic": {
+                f"T_{k}": [1000 + i * 25 for i in range(25)] for k in range(5)
+            },
+            "Financials": {
+                f"F_{k}": [5000 - i * 10 for i in range(25)] for k in range(5)
+            },
+            "Basic Materials": {
+                f"B_{k}": [3000 - i * 15 for i in range(25)] for k in range(5)
+            },
+        }
+
+        wbsa_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=600, high=620, low=590, close=600 + i, volume=1e6, value=6e8)
+            for i in range(20)
+        ]
+
+        validations_data = {
+            "WBSA": {
+                "analysis_text": "WBSA strong accumulation",
+                "broker_data": {"brokers": [{"broker_code": "MG", "broker_name": "Semesta", "nval": 1e9}]},
+                "ohlc_rows": wbsa_ohlc,
+                "fundamental_data": {"eps": 10.0, "per": 12.0, "der": 0.5},
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = run_pipeline(
+                screener_data=screener_data,
+                benchmark_ohlc=benchmark_ohlc,
+                sector_stock_closes=sector_stock_closes,
+                validations_data=validations_data,
+                output_dir=tmpdir,
+                date_str="2026-09-25",
+            )
+
+            content = Path(report_path).read_text(encoding="utf-8")
+            self.assertIn("WBSA", content)
+            self.assertIn("PTBA", content)
+            # PEGE (Financials - Lagging) and VISI (Basic Materials - Lagging) must NOT be candidates
+            # Check Candidates table section specifically
+            cand_section = content.split("## 2. Kandidat Screening")[1].split("## 3. Validasi Mendalam")[0]
+            self.assertIn("WBSA", cand_section)
+            self.assertIn("PTBA", cand_section)
+            self.assertNotIn("PEGE", cand_section)
+            self.assertNotIn("VISI", cand_section)
+
 
 if __name__ == "__main__":
     unittest.main()

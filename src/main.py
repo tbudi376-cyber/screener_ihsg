@@ -138,29 +138,22 @@ def run_pipeline(
         if quota_used.rrg_stocks_processed == 0:
             quota_used.rrg_stocks_processed = sum(sector_counts)
 
-    # 3. Filter candidates by positive signal bucket
-    bucket_candidates = filter_by_bucket(all_candidates, config["positive_buckets"])
-    if not bucket_candidates:
-        bucket_candidates = all_candidates
-
-    # 4. Rank candidates prioritizing favored sectors (Leading / Improving)
+    # 3. Filter candidates by favorable sectors (Leading / Improving) - PRD §7.3
     favored_sectors = [
         item[0] for item in sector_ranking if item[1] in ("Leading", "Improving")
     ]
+    if favored_sectors:
+        sector_filtered = filter_by_sectors(all_candidates, favored_sectors)
+    else:
+        sector_filtered = all_candidates
 
-    def candidate_priority_score(c: Candidate) -> tuple[int, float]:
-        in_favored = 1 if c.stock.sector in favored_sectors else 0
-        wr = c.wr_event or 0
-        pot = c.potential or 0
-        dd = abs(c.drawdown or 0)
-        risk_penalty = 0
-        if "risiko" in c.note.lower() or "distribusi" in c.note.lower():
-            risk_penalty = 10
-        qual_score = wr * 0.5 + pot * 0.3 - dd * 0.2 - risk_penalty
-        return (in_favored, qual_score)
+    # 4. Filter by positive signal bucket
+    bucket_filtered = filter_by_bucket(sector_filtered, config["positive_buckets"])
+    if not bucket_filtered and sector_filtered:
+        bucket_filtered = sector_filtered
 
-    sorted_candidates = sorted(bucket_candidates, key=candidate_priority_score, reverse=True)
-    top_candidates = sorted_candidates[:config["max_candidates"]]
+    # 5. Rank top candidates
+    top_candidates = rank_candidates(bucket_filtered, max_results=config["max_candidates"])
 
     # 6. Assemble validations
     validations: list[ValidationResult] = []
