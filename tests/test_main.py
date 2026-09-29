@@ -278,6 +278,50 @@ class TestMainPipeline(unittest.TestCase):
             self.assertIn("sampel 5 saham representatif", content)
             self.assertNotIn("sampel 6 saham", content)
 
+    def test_run_pipeline_mode_mandiri(self):
+        """Verifikasi run_pipeline dengan mode='mandiri' melakukan top-down screening dari sektor unggulan."""
+        bench_closes = [7000 + i * 10 for i in range(25)]
+        benchmark_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=7000, high=7050, low=6950, close=bench_closes[i], volume=1e9, value=7e12)
+            for i in range(25)
+        ]
+        # Energy is leading
+        sector_stock_closes = {
+            "Energy": {
+                "ADRO": [3000 + i * 20 for i in range(25)],
+                "PTBA": [2800 + i * 15 for i in range(25)],
+                "MEDC": [1200 + i * 10 for i in range(25)],
+                "PGAS": [1500 + i * 8 for i in range(25)],
+                "AKRA": [1400 + i * 6 for i in range(25)],
+            }
+        }
+        # ADRO OHLC with full PRD §6 criteria: val > 1B, vol > sma20, n_foreign > 0, close >= sma20
+        adro_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=3000, high=3050, low=2950, close=3000, volume=5e6, value=15e9, f_buy=1e6, f_sell=1e6, n_foreign=0)
+            for i in range(19)
+        ]
+        adro_ohlc.append(
+            OHLCRow(date="2026-09-20", open=3000, high=3550, low=3000, close=3500, volume=12e6, value=40e9, f_buy=5e6, f_sell=1e6, n_foreign=4e6)
+        )
+        stock_ohlc_map = {"ADRO": adro_ohlc}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = run_pipeline(
+                screener_data={"rows": []},  # empty upstream screener
+                benchmark_ohlc=benchmark_ohlc,
+                sector_stock_closes=sector_stock_closes,
+                validations_data={},
+                output_dir=tmpdir,
+                date_str="2026-09-29",
+                mode="mandiri",
+                stock_ohlc_map=stock_ohlc_map,
+            )
+            content = Path(report_path).read_text(encoding="utf-8")
+            self.assertIn("Mode Screening: Mandiri (Top-Down Sektor)", content)
+            self.assertIn("ADRO", content)
+            self.assertIn("🟢 SINYAL MANDIRI (PRD §6)", content)
+            self.assertIn("Energy", content)
+
 
 if __name__ == "__main__":
     unittest.main()

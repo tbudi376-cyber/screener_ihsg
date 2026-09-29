@@ -88,6 +88,87 @@ class TestScreener(unittest.TestCase):
         msg_candidates = rank_candidates(candidates)
         self.assertEqual(msg_candidates, [])
 
+    def test_screen_mandiri_constituents_full_criteria(self):
+        """Verifikasi mode mandiri: 4/4 filter PRD menghasilkan bucket SINYAL MANDIRI."""
+        from src.models import OHLCRow
+        from src.screener import screen_mandiri_constituents
+
+        # 20 rows where latest has val > 1B, vol > sma20, n_foreign > 0, close >= sma20
+        rows_bbca = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=6000, high=6050, low=5950, close=6000, volume=5e6, value=30e9, f_buy=1e6, f_sell=1e6, n_foreign=0)
+            for i in range(19)
+        ]
+        rows_bbca.append(
+            OHLCRow(date="2026-09-20", open=6000, high=6300, low=6000, close=6250, volume=15e6, value=93e9, f_buy=10e6, f_sell=2e6, n_foreign=8e6)
+        )
+
+        stock_ohlc_map = {"BBCA": rows_bbca}
+        results = screen_mandiri_constituents(
+            favored_sectors=["Financials"],
+            sector_config=self.sector_config,
+            stock_ohlc_map=stock_ohlc_map,
+        )
+
+        self.assertEqual(len(results), 1)
+        cand = results[0]
+        self.assertEqual(cand.stock.code, "BBCA")
+        self.assertEqual(cand.bucket, "🟢 SINYAL MANDIRI (PRD §6)")
+        self.assertIn("Lolos 4/4 filter PRD", cand.note)
+        self.assertEqual(cand.stock.sector, "Financials")
+
+    def test_screen_mandiri_constituents_partial_criteria(self):
+        """Verifikasi mode mandiri: 3/4 filter PRD menghasilkan bucket AKUMULASI MANDIRI."""
+        from src.models import OHLCRow
+        from src.screener import screen_mandiri_constituents
+
+        # 20 rows where latest has vol <= sma20, but n_foreign > 0 and close >= sma20 and val > 1B
+        rows_adro = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=3000, high=3050, low=2950, close=3000, volume=10e6, value=30e9, f_buy=1e6, f_sell=1e6, n_foreign=0)
+            for i in range(19)
+        ]
+        # latest has volume 5M (below 10M SMA20), close 3100 (> 3000 SMA20), n_foreign +2M, value 15.5B (> 1B)
+        rows_adro.append(
+            OHLCRow(date="2026-09-20", open=3000, high=3150, low=3000, close=3100, volume=5e6, value=15.5e9, f_buy=4e6, f_sell=2e6, n_foreign=2e6)
+        )
+
+        stock_ohlc_map = {"ADRO": rows_adro}
+        results = screen_mandiri_constituents(
+            favored_sectors=["Energy"],
+            sector_config=self.sector_config,
+            stock_ohlc_map=stock_ohlc_map,
+        )
+
+        self.assertEqual(len(results), 1)
+        cand = results[0]
+        self.assertEqual(cand.stock.code, "ADRO")
+        self.assertEqual(cand.bucket, "🥷 AKUMULASI MANDIRI (PRD §6)")
+        self.assertIn("Lolos 3/4 filter PRD", cand.note)
+        self.assertIn("Vol <= MA20", cand.note)
+
+    def test_screen_mandiri_constituents_filters_low_value_and_non_favored(self):
+        """Verifikasi mode mandiri: nilai transaksi < 1B diabaikan dan sektor non-unggulan disaring."""
+        from src.models import OHLCRow
+        from src.screener import screen_mandiri_constituents
+
+        # MEDC has value only 500M (< 1B)
+        rows_medc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=1000, high=1050, low=950, close=1000, volume=500000, value=500e6, f_buy=1e5, f_sell=5e4, n_foreign=5e4)
+            for i in range(20)
+        ]
+        # GOTO is in Technology (not in favored_sectors)
+        rows_goto = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=60, high=65, low=58, close=60, volume=50e6, value=3e9, f_buy=1e7, f_sell=5e6, n_foreign=5e6)
+            for i in range(20)
+        ]
+
+        stock_ohlc_map = {"MEDC": rows_medc, "GOTO": rows_goto}
+        results = screen_mandiri_constituents(
+            favored_sectors=["Energy"],
+            sector_config=self.sector_config,
+            stock_ohlc_map=stock_ohlc_map,
+        )
+        self.assertEqual(results, [])
+
 
 if __name__ == "__main__":
     unittest.main()

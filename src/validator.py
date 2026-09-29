@@ -486,6 +486,39 @@ def assemble_validation(
 ) -> ValidationResult:
     # Official convention: ohlc_rows is ordered oldest-to-newest, so index -1 is the latest candle
     latest = ohlc_rows[-1] if ohlc_rows else None
+    personality_stats = extract_personality_wr_stats(analysis_text)
+    if personality_stats.get("avg_wr") is not None:
+        if candidate.wr_event is None:
+            candidate.wr_event = personality_stats["avg_wr"]
+    if personality_stats.get("is_weak_history"):
+        wr_disp = candidate.wr_event if candidate.wr_event is not None else personality_stats["avg_wr"]
+        candidate.wr_event_flag = f"{wr_disp:.1f}% ⚠️ Historis Lemah"
+    elif candidate.wr_event is not None and candidate.wr_event < 50.0:
+        candidate.wr_event_flag = f"{candidate.wr_event:.1f}% ⚠️ Historis Lemah"
+
+    # Resolve stock name from analysis if needed
+    if (not candidate.stock.name or candidate.stock.name == candidate.stock.code) and analysis_text:
+        name_match = re.search(r'\n\s*_\s*([^\n_]+Tbk\.?|[^\n_]+)\s*_\s*\n', analysis_text)
+        if name_match:
+            candidate.stock.name = name_match.group(1).strip()
+
+    # Detect AVOID status
+    is_avoid = False
+    avoid_reasons = []
+    if re.search(r'\b(AVOID|HINDARI)\b', analysis_text, re.IGNORECASE):
+        is_avoid = True
+        avoid_reasons.append("Rekomendasi AVOID / HINDARI")
+    score_match = re.search(r'Score:\s*\*{0,2}(\d+)/75\*{0,2}', analysis_text, re.IGNORECASE)
+    if score_match and int(score_match.group(1)) <= 25:
+        is_avoid = True
+        avoid_reasons.append(f"Skor {score_match.group(1)}/75 (Tekanan Jual Kuat)")
+    eff_wr = candidate.wr_event if candidate.wr_event is not None else personality_stats.get("avg_wr")
+    if eff_wr is not None and eff_wr < 50.0:
+        is_avoid = True
+        avoid_reasons.append(f"WR Event {eff_wr:.1f}% (< 50%)")
+
+    avoid_reason_str = ", ".join(avoid_reasons)
+
     pivot = None
     trade_plan = None
     foreign_flow_5d = parse_foreign_flow_5d(ohlc_rows)
@@ -498,17 +531,9 @@ def assemble_validation(
             atr=atr,
             support=pivot.s1 if pivot else latest.low,
             pivot_levels=pivot,
+            is_avoid=is_avoid,
+            avoid_reason=avoid_reason_str,
         )
-
-    personality_stats = extract_personality_wr_stats(analysis_text)
-    if personality_stats.get("avg_wr") is not None:
-        if candidate.wr_event is None:
-            candidate.wr_event = personality_stats["avg_wr"]
-    if personality_stats.get("is_weak_history"):
-        wr_disp = candidate.wr_event if candidate.wr_event is not None else personality_stats["avg_wr"]
-        candidate.wr_event_flag = f"{wr_disp:.1f}% ⚠️ Historis Lemah"
-    elif candidate.wr_event is not None and candidate.wr_event < 50.0:
-        candidate.wr_event_flag = f"{candidate.wr_event:.1f}% ⚠️ Historis Lemah"
 
     fin_metrics = fundamental_data or {}
     if "INCOME_STATEMENT" in fin_metrics or "BALANCE_SHEET" in fin_metrics or "CASH_FLOW_REPORT" in fin_metrics:
@@ -552,11 +577,16 @@ def format_validation_summary(result: ValidationResult) -> str:
         analysis_text = result.analysis_text
         if result.trade_plan:
             tp = result.trade_plan
-            analysis_text = re.sub(r"break\s*Rp[\d\.,]+[KMB]?", f"break Rp{tp.cutloss:,.0f}", analysis_text)
-            analysis_text = re.sub(r"mantul/hold\s*Rp[\d\.,]+[KMB]?\s*-\s*Rp[\d\.,]+[KMB]?", f"mantul/hold Rp{tp.entry_low:,.0f}-Rp{tp.max_entry:,.0f}", analysis_text)
-            analysis_text = re.sub(r"Entry:\s*Rp[^\n]+", f"Entry: Rp{tp.entry_low:,.0f} - Rp{tp.max_entry:,.0f} (Batas Max R:R 1.0:1) | Status: {tp.status}", analysis_text)
-            analysis_text = re.sub(r"Target:\s*Rp[^\n]+", f"Target: Rp{tp.target1:,.0f} (T1) / Rp{tp.target2:,.0f} (T2)", analysis_text)
-            analysis_text = re.sub(r"Stop\s*Loss:\s*Rp[^\n]+", f"Stop Loss: Rp{tp.cutloss:,.0f} (Proteksi Cutloss)", analysis_text)
+            is_avoid_plan = tp.status.startswith("TIDAK DIREKOMENDASIKAN")
+            if is_avoid_plan:
+                analysis_text = re.sub(r"Stop\s*Loss:\s*Rp[^\n]+", f"Stop Loss (Pengaman Eksisting): Rp{tp.cutloss:,.0f}", analysis_text)
+                analysis_text = re.sub(r"Entry:\s*Rp[^\n]+", f"Entry: TIDAK DISARANKAN ENTRY | Status: {tp.status}", analysis_text)
+            else:
+                analysis_text = re.sub(r"break\s*Rp[\d\.,]+[KMB]?", f"break Rp{tp.cutloss:,.0f}", analysis_text)
+                analysis_text = re.sub(r"mantul/hold\s*Rp[\d\.,]+[KMB]?\s*-\s*Rp[\d\.,]+[KMB]?", f"mantul/hold Rp{tp.entry_low:,.0f}-Rp{tp.max_entry:,.0f}", analysis_text)
+                analysis_text = re.sub(r"Entry:\s*Rp[^\n]+", f"Entry: Rp{tp.entry_low:,.0f} - Rp{tp.max_entry:,.0f} (Batas Max R:R 1.0:1) | Status: {tp.status}", analysis_text)
+                analysis_text = re.sub(r"Target:\s*Rp[^\n]+", f"Target: Rp{tp.target1:,.0f} (T1) / Rp{tp.target2:,.0f} (T2)", analysis_text)
+                analysis_text = re.sub(r"Stop\s*Loss:\s*Rp[^\n]+", f"Stop Loss: Rp{tp.cutloss:,.0f} (Proteksi Cutloss)", analysis_text)
             if "_Catatan: Seluruh level harga diselaraskan dengan Trade Plan" not in analysis_text:
                 analysis_text += "\n  _Catatan: Seluruh level harga diselaraskan dengan Trade Plan resmi berbasis fraksi BEI (src/pivot.py)._"
         lines.append("### Analysis")
@@ -649,31 +679,41 @@ def format_validation_summary(result: ValidationResult) -> str:
 
     if result.trade_plan:
         tp = result.trade_plan
+        is_avoid_plan = tp.status.startswith("TIDAK DIREKOMENDASIKAN")
         lines.append("### Trade Plan (Fraksi BEI)")
         lines.append(f"  Status: **{tp.status}**")
-        lines.append(f"  Entry Range: Rp{tp.entry_low:,.0f} - Rp{tp.entry_high:,.0f}")
-        lines.append(f"  Batas Entry Maksimum (R:R 1.0:1): Rp{tp.max_entry:,.0f}")
-        lines.append(f"  Cutloss: Rp{tp.cutloss:,.0f} (Proteksi di bawah Entry Range)")
-        lines.append(f"  Target 1: Rp{tp.target1:,.0f} (Resisten Terdekat)")
-        lines.append(f"  Target 2: Rp{tp.target2:,.0f} (Resisten Lanjutan)")
-        mid_val = (tp.entry_low + tp.entry_high) / 2
-        lines.append(f"  R:R Ratio (Midpoint Rp{mid_val:,.0f}): {tp.rr_ratio}:1")
-        lines.append(f"  R:R Ratio (Batas Max Entry Rp{tp.max_entry:,.0f}): {tp.rr_at_max_entry}:1")
-        lines.append(f"  ATR(14): Rp{tp.atr:,.2f}")
-        if tp.warning:
-            lines.append(f"  {tp.warning}")
-        stop_pct = abs(tp.cutloss - mid_val) / mid_val * 100 if mid_val > 0 else 0.0
-        lines.append(
-            f"  _Catatan Statistik Edge vs Stop Loss: Potensi kenaikan (+7%) dan Drawdown (-3%) historis "
-            f"diturunkan dari backtest event jangka pendek (D+2 s/d D+4) berbasis rata-rata ATR. Lebar stop loss "
-            f"Trade Plan ini didasarkan pada batas teknikal/support (jarak cutloss ~{stop_pct:.1f}%), sehingga "
-            f"statistik win rate historis tidak berlaku langsung untuk lebar stop loss Trade Plan tersebut._"
-        )
+        if is_avoid_plan:
+            lines.append("  Entry Range: TIDAK DISARANKAN ENTRY")
+            lines.append(f"  Batas Pengaman / Cutloss Eksisting: Rp{tp.cutloss:,.0f} (Level Support/Cutloss Pengaman)")
+            lines.append(f"  Target Pantulan / Exit: Rp{tp.target1:,.0f} (T1) / Rp{tp.target2:,.0f} (T2)")
+            lines.append(f"  ATR(14): Rp{tp.atr:,.2f}")
+            if tp.warning:
+                lines.append(f"  {tp.warning}")
+        else:
+            lines.append(f"  Entry Range: Rp{tp.entry_low:,.0f} - Rp{tp.entry_high:,.0f}")
+            lines.append(f"  Batas Entry Maksimum (R:R 1.0:1): Rp{tp.max_entry:,.0f}")
+            lines.append(f"  Cutloss: Rp{tp.cutloss:,.0f} (Proteksi di bawah Entry Range)")
+            lines.append(f"  Target 1: Rp{tp.target1:,.0f} (Resisten Terdekat)")
+            lines.append(f"  Target 2: Rp{tp.target2:,.0f} (Resisten Lanjutan)")
+            mid_val = (tp.entry_low + tp.entry_high) / 2
+            lines.append(f"  R:R Ratio (Midpoint Rp{mid_val:,.0f}): {tp.rr_ratio}:1")
+            lines.append(f"  R:R Ratio (Batas Max Entry Rp{tp.max_entry:,.0f}): {tp.rr_at_max_entry}:1")
+            lines.append(f"  ATR(14): Rp{tp.atr:,.2f}")
+            if tp.warning:
+                lines.append(f"  {tp.warning}")
+            stop_pct = abs(tp.cutloss - mid_val) / mid_val * 100 if mid_val > 0 else 0.0
+            lines.append(
+                f"  _Catatan Statistik Edge vs Stop Loss: Potensi kenaikan (+7%) dan Drawdown (-3%) historis "
+                f"diturunkan dari backtest event jangka pendek (D+2 s/d D+4) berbasis rata-rata ATR. Lebar stop loss "
+                f"Trade Plan ini didasarkan pada batas teknikal/support (jarak cutloss ~{stop_pct:.1f}%), sehingga "
+                f"statistik win rate historis tidak berlaku langsung untuk lebar stop loss Trade Plan tersebut._"
+            )
         lines.append("")
 
-    if result.broker_data.get("brokers"):
-        lines.append("### Top Brokers & Aliran Dana")
-        for b in result.broker_data["brokers"][:5]:
+    brokers = result.broker_data.get("brokers") if isinstance(result.broker_data, dict) else []
+    lines.append("### Top Brokers & Aliran Dana")
+    if brokers:
+        for b in brokers[:5]:
             code = b.get("broker_code", "?")
             name = b.get("broker_name", "")
             nval = b.get("nval", 0)
@@ -683,6 +723,8 @@ def format_validation_summary(result: ValidationResult) -> str:
         lines.append("  _Catatan Definisi Broker:_")
         lines.append("  - **Top Brokers (Tabel di atas)**: Netflow nominal murni sesi perdagangan harian terakhir (D-0).")
         lines.append("  - **Label Heavy Buyer/Seller (pada analisis di atas)**: Dihitung oleh algoritma idx-edge berbasis klasifikasi broker institusi/asing dan akumulasi rolling multi-hari (5D) untuk menyaring noise broker ritel lokal.")
-        lines.append("")
+    else:
+        lines.append("  ℹ️ Data broker summary belum tersedia untuk sesi ini. Kemungkinan proses penarikan data berlangsung sebelum bursa selesai merekapitulasi data transaksi broker harian (End of Day / EOD).")
+    lines.append("")
 
     return "\n".join(lines)

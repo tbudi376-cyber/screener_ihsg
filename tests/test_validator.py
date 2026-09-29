@@ -523,6 +523,44 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Data Fundamental Sangat Basi", metrics["verification_note"])
         self.assertIn("Q4 2023", metrics["verification_note"])
 
+    def test_avoid_stock_trade_plan_formatting(self):
+        """Verifikasi saham AVOID / Skor <= 25 memformat Trade Plan pengaman dan meniadakan area beli."""
+        analysis_avoid = """📊 **HRUM** — Analisis
+  Score: **20/75** — ⚪ **NETRAL**
+  **📋 REKOMENDASI**
+  ⛔ **AVOID**
+  Jika sudah punya: Cut loss. Harga dalam tekanan jual
+  Jika belum punya: Lewati, cari saham lain
+  Stop Loss: Rp820
+"""
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text=analysis_avoid,
+            broker_data={},
+            ohlc_rows=self.ohlc_rows,
+        )
+        self.assertIsNotNone(result.trade_plan)
+        self.assertEqual(result.trade_plan.status, "TIDAK DIREKOMENDASIKAN (Sinyal AVOID / Tekanan Jual Kuat)")
+
+        summary = format_validation_summary(result)
+        self.assertIn("Status: **TIDAK DIREKOMENDASIKAN (Sinyal AVOID / Tekanan Jual Kuat)**", summary)
+        self.assertIn("Entry Range: TIDAK DISARANKAN ENTRY", summary)
+        self.assertIn("Batas Pengaman / Cutloss Eksisting: Rp", summary)
+        self.assertNotIn("Entry Range: Rp", summary)
+        self.assertNotIn("TUNGGU (Buy on Weakness)", summary)
+
+    def test_empty_broker_data_displays_eod_informative_note(self):
+        """Verifikasi bahwa broker data kosong menampilkan catatan penarikan sebelum EOD bursa."""
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text="Normal analysis",
+            broker_data={"brokers": []},
+            ohlc_rows=self.ohlc_rows,
+        )
+        summary = format_validation_summary(result)
+        self.assertIn("Data broker summary belum tersedia untuk sesi ini", summary)
+        self.assertIn("End of Day / EOD", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

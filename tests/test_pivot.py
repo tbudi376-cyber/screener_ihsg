@@ -262,6 +262,26 @@ class TestPivot(unittest.TestCase):
         self.assertLess(plan.max_entry, plan.entry_low)
         self.assertIn("PLAN TIDAK VALID", plan.warning)
 
+    def test_trade_plan_avoid_status_prohibits_tunggu_and_buy(self):
+        """Verifikasi bahwa saham berstatus AVOID tidak mencetak TUNGGU maupun rekomendasi beli."""
+        pivots = PivotLevels(
+            pivot=865.0, r1=890.0, r2=910.0, r3=935.0,
+            s1=845.0, s2=820.0, s3=800.0,
+        )
+        plan = calculate_trade_plan(
+            close=870.0,
+            atr=45.0,
+            support=845.0,
+            pivot_levels=pivots,
+            is_avoid=True,
+            avoid_reason="Rekomendasi AVOID, Skor 20/75",
+        )
+        self.assertEqual(plan.status, "TIDAK DIREKOMENDASIKAN (Sinyal AVOID / Tekanan Jual Kuat)")
+        self.assertNotIn("TUNGGU", plan.status)
+        self.assertIn("⛔ TIDAK DIREKOMENDASIKAN", plan.warning)
+        self.assertIn("Dilarang membuka posisi beli baru", plan.warning)
+        self.assertIn("batas pengaman bagi pemegang saham eksisting", plan.warning)
+
 
 if __name__ == "__main__":
     unittest.main()

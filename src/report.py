@@ -97,6 +97,7 @@ def generate_daily_report(
     rrg_sample_note: str | None = None,
     output_dir: str | None = None,
     previous_sector_quadrants: dict | None = None,
+    mode: str = "upstream",
 ) -> str:
     # 0. Detect sector status changes from previous run
     if previous_sector_quadrants is None and output_dir:
@@ -178,6 +179,9 @@ def generate_daily_report(
     lines = []
     lines.append(f"# Screener IHSG - Laporan Harian {date}")
     lines.append(f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_")
+    mode_badge = "Mode Screening: Mandiri (Top-Down Sektor)" if mode == "mandiri" else "Mode Screening: Upstream (IDX-Edge Web)"
+    lines.append(f"_{mode_badge}_")
+    lines.append("")
 
     if isinstance(quota_used, QuotaUsageBreakdown):
         lines.append(f"_Kuota API terpakai: {quota_used.total_calls} request_")
@@ -284,10 +288,12 @@ def generate_daily_report(
     lines.append("")
     lines.append("Sesuai prinsip kejujuran data (PRD §8), berikut adalah definisi dan asal data dari setiap istilah:")
     lines.append("")
-    lines.append("1. **Kategori Sinyal (Bucket)** — _Sumber: `idx-edge:screener_saham_terkini` (`screener_v5.py`)_")
+    lines.append("1. **Kategori Sinyal (Bucket)** — _Sumber: `idx-edge:screener_saham_terkini` (`screener_v5.py`) / Filter Mandiri (PRD §6)_")
     lines.append("   - **SINYAL BERSIH**: Konvergensi teknikal bullish (di atas MA5/MA20) + net buy asing signifikan + akumulasi top broker tanpa konflik distribusi.")
     lines.append("   - **SINYAL SENYAP**: Akumulasi pekat oleh broker utama atau asing saat volatilitas harga masih tenang (mode senyap / belum breakout).")
     lines.append("   - **AKUMULASI SENYAP**: Sinyal tier-2 dengan tanda akumulasi awal, disiapkan sebagai watchlist bila volume terkonfirmasi meningkat.")
+    lines.append("   - **🟢 SINYAL MANDIRI (PRD §6)**: Lolos 4/4 filter PRD (Val > Rp1 Miliar, Vol > MA20, Net Buy Asing > 0, Close >= SMA20) dari konstituen sektor Leading/Improving.")
+    lines.append("   - **🥷 AKUMULASI MANDIRI (PRD §6)**: Lolos 3/4 filter PRD (akumulasi awal / konfirmasi volume atau net buy asing parsial).")
     lines.append("   - **RISIKO PANTULAN / KONFLIK DISTRIBUSI**: Anomali di mana harga naik tetapi broker distribusi aktif atau asing melepas barang (diberi penalti skor/disaring).")
     lines.append("")
     lines.append("2. **Metrik Probabilitas Historis** — _Sumber: Model backtest event-based `idx-edge` (Jan 2020 - sekarang)_")

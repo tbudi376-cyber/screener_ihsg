@@ -82,6 +82,8 @@ def calculate_trade_plan(
     support: float,
     pivot_levels: PivotLevels | None = None,
     min_rr: float = 1.0,
+    is_avoid: bool = False,
+    avoid_reason: str = "",
 ) -> TradePlan:
     """Calculate trade plan derived from actual price structure and pivot levels.
 
@@ -90,6 +92,7 @@ def calculate_trade_plan(
       are rounded to official IDX price tick fractions (Kep-00023/BEI/03-2020).
     - Entry Range is preserved naturally from price structure without artificial narrowing.
     - Maximum Entry is calculated via formula: E <= (T1 + k*Cutloss) / (1 + k).
+    - If is_avoid is True, issues status 'TIDAK DIREKOMENDASIKAN (Sinyal AVOID / Tekanan Jual Kuat)'.
     - If close > max_entry, issues status 'TUNGGU (Buy on Weakness)' with max_entry level.
     - If max_entry < entry_low, issues status 'PLAN TIDAK VALID'.
     - Displays R:R both at midpoint and at maximum entry boundary.
@@ -158,7 +161,15 @@ def calculate_trade_plan(
     rr_at_max = round(reward_max / risk_max, 2) if risk_max > 0 else 0.0
 
     # 4. Status and Advisory Warnings
-    if max_entry < entry_low:
+    if is_avoid:
+        status = "TIDAK DIREKOMENDASIKAN (Sinyal AVOID / Tekanan Jual Kuat)"
+        reason_txt = f": {avoid_reason}" if avoid_reason else ""
+        warning = (
+            f"⛔ TIDAK DIREKOMENDASIKAN{reason_txt}. Saham berada dalam tekanan jual atau "
+            f"memiliki probabilitas historis rendah (skor <= 25 atau WR Event < 50%). Dilarang membuka posisi beli baru. "
+            f"Level Cutloss/Support (Rp{cutloss:,.0f}) diposisikan murni sebagai batas pengaman bagi pemegang saham eksisting."
+        )
+    elif max_entry < entry_low:
         status = "PLAN TIDAK VALID"
         warning = (
             f"⛔ PLAN TIDAK VALID: Level entry maksimum untuk R:R {min_rr}:1 (Rp{max_entry:,.0f}) "

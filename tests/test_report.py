@@ -252,6 +252,20 @@ class TestReport(unittest.TestCase):
             self.assertEqual(parsed.get("Transportation & Logistic"), "Improving")
             self.assertEqual(parsed.get("Financials"), "Lagging")
 
+    def test_report_header_badge_upstream_mode(self):
+        """Verifikasi header laporan mencantumkan badge Mode Screening: Upstream."""
+        report = generate_daily_report(
+            "2026-09-29", self.sector_ranking, self.candidates, self.validations, 25, mode="upstream"
+        )
+        self.assertIn("Mode Screening: Upstream (IDX-Edge Web)", report)
+
+    def test_report_header_badge_mandiri_mode(self):
+        """Verifikasi header laporan mencantumkan badge Mode Screening: Mandiri."""
+        report = generate_daily_report(
+            "2026-09-29", self.sector_ranking, self.candidates, self.validations, 25, mode="mandiri"
+        )
+        self.assertIn("Mode Screening: Mandiri (Top-Down Sektor)", report)
+
 
 if __name__ == "__main__":
     unittest.main()
