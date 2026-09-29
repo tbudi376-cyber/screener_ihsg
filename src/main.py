@@ -235,7 +235,7 @@ def run_pipeline(
         mode=mode,
     )
 
-    saved_path = save_report(report_content, target_output_dir, date_str=report_date)
+    saved_path = save_report(report_content, target_output_dir, date_str=report_date, mode=mode)
     return saved_path
 
 

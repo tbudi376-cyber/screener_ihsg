@@ -266,6 +266,50 @@ class TestReport(unittest.TestCase):
         )
         self.assertIn("Mode Screening: Mandiri (Top-Down Sektor)", report)
 
+    def test_save_report_distinct_filenames_for_modes(self):
+        """Verifikasi mode mandiri dan upstream menghasilkan nama file berbeda agar tidak saling timpa."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path_m = save_report("# Mandiri", tmpdir, date_str="2026-09-29", mode="mandiri")
+            path_u = save_report("# Upstream", tmpdir, date_str="2026-09-29", mode="upstream")
+
+            self.assertTrue(path_m.endswith("screener_mandiri_2026-09-29.md"))
+            self.assertTrue(path_u.endswith("screener_upstream_2026-09-29.md"))
+            self.assertTrue(Path(path_m).exists())
+            self.assertTrue(Path(path_u).exists())
+            self.assertEqual(Path(path_m).read_text(encoding="utf-8"), "# Mandiri")
+            self.assertEqual(Path(path_u).read_text(encoding="utf-8"), "# Upstream")
+
+            # Legacy file for upstream compatibility also exists
+            legacy_file = Path(tmpdir) / "screener_2026-09-29.md"
+            self.assertTrue(legacy_file.exists())
+            self.assertEqual(legacy_file.read_text(encoding="utf-8"), "# Upstream")
+
+    def test_sync_report_to_downloads_distinct_modes(self):
+        """Verifikasi sync ke download menjaga file mandiri dan upstream terpisah tanpa ketimpa."""
+        with tempfile.TemporaryDirectory() as tmp_out:
+            with tempfile.TemporaryDirectory() as tmp_dl:
+                path_m = save_report("# Mandiri Content", tmp_out, date_str="2026-09-29", mode="mandiri")
+                path_u = save_report("# Upstream Content", tmp_out, date_str="2026-09-29", mode="upstream")
+
+                sync_report_to_downloads(path_m, dest_dirs=[tmp_dl])
+                sync_report_to_downloads(path_u, dest_dirs=[tmp_dl])
+
+                dl_path = Path(tmp_dl)
+                file_mandiri = dl_path / "screener_mandiri_2026-09-29.md"
+                file_upstream = dl_path / "screener_upstream_2026-09-29.md"
+                file_mandiri_latest = dl_path / "screener_mandiri_terbaru.md"
+                file_upstream_latest = dl_path / "screener_upstream_terbaru.md"
+
+                self.assertTrue(file_mandiri.exists())
+                self.assertTrue(file_upstream.exists())
+                self.assertTrue(file_mandiri_latest.exists())
+                self.assertTrue(file_upstream_latest.exists())
+
+                self.assertEqual(file_mandiri.read_text(encoding="utf-8"), "# Mandiri Content")
+                self.assertEqual(file_upstream.read_text(encoding="utf-8"), "# Upstream Content")
+                self.assertEqual(file_mandiri_latest.read_text(encoding="utf-8"), "# Mandiri Content")
+                self.assertEqual(file_upstream_latest.read_text(encoding="utf-8"), "# Upstream Content")
+
 
 if __name__ == "__main__":
     unittest.main()

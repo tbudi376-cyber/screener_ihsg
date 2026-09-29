@@ -320,13 +320,30 @@ def generate_daily_report(
     return "\n".join(lines)
 
 
-def save_report(content: str, output_dir: str, date_str: str | None = None) -> str:
+def save_report(
+    content: str,
+    output_dir: str,
+    date_str: str | None = None,
+    mode: str = "upstream",
+) -> str:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     report_date = date_str or datetime.now().strftime("%Y-%m-%d")
-    filename = f"screener_{report_date}.md"
+    if mode == "mandiri":
+        filename = f"screener_mandiri_{report_date}.md"
+    elif mode == "upstream":
+        filename = f"screener_upstream_{report_date}.md"
+    else:
+        filename = f"screener_{report_date}.md"
+
     filepath = out_path / filename
     filepath.write_text(content, encoding="utf-8")
+
+    # Backward compatibility: for upstream or default, ensure screener_{report_date}.md is also written
+    if mode == "upstream":
+        legacy_path = out_path / f"screener_{report_date}.md"
+        legacy_path.write_text(content, encoding="utf-8")
+
     return str(filepath)
 
 
@@ -337,12 +354,27 @@ def sync_report_to_downloads(
     """Sync report to destination directories (e.g. /sdcard/Download/) with explicit UTF-8 encoding."""
     if dest_dirs is None:
         dest_dirs = ["/sdcard/Download", "/storage/emulated/0/Download"]
-    content = Path(report_filepath).read_text(encoding="utf-8")
+    path_obj = Path(report_filepath)
+    content = path_obj.read_text(encoding="utf-8")
+    base_name = path_obj.name
+
+    target_names = [base_name]
+    if "mandiri" in base_name:
+        target_names.extend(["screener_mandiri_terbaru.md", "screener_ihsg_terbaru.md"])
+    elif "upstream" in base_name:
+        date_part = base_name.replace("screener_upstream_", "").replace(".md", "")
+        target_names.extend([f"screener_{date_part}.md", "screener_upstream_terbaru.md", "screener_ihsg_terbaru.md"])
+    else:
+        target_names.append("screener_ihsg_terbaru.md")
+
+    # Preserve uniqueness while maintaining order
+    unique_target_names = list(dict.fromkeys(target_names))
+
     synced_paths = []
     for d in dest_dirs:
         dest_path = Path(d)
         if dest_path.exists() and dest_path.is_dir():
-            for fname in [Path(report_filepath).name, "screener_ihsg_terbaru.md"]:
+            for fname in unique_target_names:
                 target_file = dest_path / fname
                 target_file.write_text(content, encoding="utf-8")
                 synced_paths.append(str(target_file))
