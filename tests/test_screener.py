@@ -116,8 +116,8 @@ class TestScreener(unittest.TestCase):
         self.assertIn("Lolos 4/4 filter PRD", cand.note)
         self.assertEqual(cand.stock.sector, "Financials")
 
-    def test_screen_mandiri_constituents_partial_criteria(self):
-        """Verifikasi mode mandiri: 3/4 filter PRD menghasilkan bucket AKUMULASI MANDIRI."""
+    def test_screen_mandiri_constituents_strict_4_of_4_rejects_partial(self):
+        """Verifikasi disiplin 4/4: tanpa toleransi 3/4, saham dengan vol <= sma20 atau nbsa <= 0 harus digugurkan."""
         from src.models import OHLCRow
         from src.screener import screen_mandiri_constituents
 
@@ -138,12 +138,8 @@ class TestScreener(unittest.TestCase):
             stock_ohlc_map=stock_ohlc_map,
         )
 
-        self.assertEqual(len(results), 1)
-        cand = results[0]
-        self.assertEqual(cand.stock.code, "ADRO")
-        self.assertEqual(cand.bucket, "🥷 AKUMULASI MANDIRI (PRD §6)")
-        self.assertIn("Lolos 3/4 filter PRD", cand.note)
-        self.assertIn("Vol <= MA20", cand.note)
+        # Under strict 4/4 filter, ADRO fails because vol <= sma20
+        self.assertEqual(results, [])
 
     def test_screen_mandiri_constituents_filters_low_value_and_non_favored(self):
         """Verifikasi mode mandiri: nilai transaksi < 1B diabaikan dan sektor non-unggulan disaring."""

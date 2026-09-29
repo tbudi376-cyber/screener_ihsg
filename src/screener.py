@@ -115,28 +115,22 @@ def screen_mandiri_constituents(
             if latest.close < sma20_close:
                 continue
 
-            # Syarat kelonggaran 3/4 HANYA berlaku untuk volume harian atau net buy asing:
+            # Syarat 4 (Hard Filter Volume): Volume harian > MA20 volume
             c_vol = (latest.volume > sma20_vol) if sma20_vol > 0 else False
+            if not c_vol:
+                continue
+
+            # Syarat 5 (Hard Filter Net Foreign Flow): Net Foreign Buy harian > 0
             c_nbsa = (latest.n_foreign > 0) or (latest.f_buy > latest.f_sell)
+            if not c_nbsa:
+                continue
 
             vol_ratio = (latest.volume / sma20_vol) if sma20_vol > 0 else 1.0
             pct_above_ma = ((latest.close - sma20_close) / sma20_close * 100) if sma20_close > 0 else 0.0
 
-            if c_vol and c_nbsa:
-                bucket = "🟢 SINYAL MANDIRI (PRD §6)"
-                note = "Lolos 4/4 filter PRD (Val > 1M, Vol > MA20, NBSA > 0, Close >= SMA20)"
-                score = 100.0 + vol_ratio * 5.0 + (10.0 if latest.n_foreign > 0 else 0.0)
-            elif c_vol or c_nbsa:
-                bucket = "🥷 AKUMULASI MANDIRI (PRD §6)"
-                missed = []
-                if not c_vol:
-                    missed.append("Vol <= MA20")
-                if not c_nbsa:
-                    missed.append("NBSA <= 0")
-                note = f"Lolos 3/4 filter PRD ({', '.join(missed)}, Tren di atas SMA20)"
-                score = 50.0 + vol_ratio * 3.0 + (5.0 if latest.n_foreign > 0 else 0.0)
-            else:
-                continue
+            bucket = "🟢 SINYAL MANDIRI (PRD §6)"
+            note = "Lolos 4/4 filter PRD (Val > 1M, Vol > MA20, NBSA > 0, Close >= SMA20)"
+            score = 100.0 + vol_ratio * 5.0 + (10.0 if latest.n_foreign > 0 else 0.0)
 
             summary = (
                 f"Top-Down Sektor {sector} | Val Rp{latest.value/1e9:.2f}B | "
@@ -157,4 +151,8 @@ def screen_mandiri_constituents(
 
     candidates_with_score.sort(key=lambda x: x[1], reverse=True)
     return [item[0] for item in candidates_with_score[:max_results]]
+
+
+# Alias for compatibility with sector constituent screening terminology
+screen_sector_constituents = screen_mandiri_constituents
 
