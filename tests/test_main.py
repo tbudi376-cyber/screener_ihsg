@@ -244,6 +244,40 @@ class TestMainPipeline(unittest.TestCase):
             self.assertNotIn("PEGE", cand_section)
             self.assertNotIn("VISI", cand_section)
 
+    def test_run_pipeline_filters_out_candidate_leakage_from_rrg(self):
+        """Verifikasi bahwa run_pipeline memfilter saham kandidat yang bocor ke sector_stock_closes."""
+        screener_data = {"rows": []}
+        bench_closes = [7000 + i * 10 for i in range(25)]
+        benchmark_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=7000, high=7050, low=6950, close=bench_closes[i], volume=1e9, value=7e12)
+            for i in range(25)
+        ]
+        # Consumer Cyclicals with 5 official representative stocks + DSSA leaked as 6th stock
+        sector_stock_closes = {
+            "Consumer Cyclicals": {
+                "ERAA": [400 + i for i in range(25)],
+                "ACES": [800 + i for i in range(25)],
+                "MAPI": [1500 + i for i in range(25)],
+                "LPPF": [1600 + i for i in range(25)],
+                "RALS": [500 + i for i in range(25)],
+                "DSSA": [1055 for _ in range(25)],  # Leaked candidate!
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = run_pipeline(
+                screener_data=screener_data,
+                benchmark_ohlc=benchmark_ohlc,
+                sector_stock_closes=sector_stock_closes,
+                validations_data={},
+                output_dir=tmpdir,
+                date_str="2026-09-28",
+                quota_used=QuotaUsageBreakdown(rrg_sectors_processed=1, rrg_stocks_processed=5),
+            )
+            content = Path(report_path).read_text(encoding="utf-8")
+            # Transparency note should state 5 stocks, NOT 6 stocks
+            self.assertIn("sampel 5 saham representatif", content)
+            self.assertNotIn("sampel 6 saham", content)
+
 
 if __name__ == "__main__":
     unittest.main()

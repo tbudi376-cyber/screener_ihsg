@@ -1,13 +1,13 @@
 {
-  "Energy": ["ADRO", "PTBA", "MEDC", "PGAS", "AKRA", "ELSA", "RAJA", "ESSA", "BREN", "TPIA"],
-  "Basic Materials": ["INKP", "TKIM", "INTP", "SMGR", "BRPT", "MDKA", "ANTM", "INCO", "ADMR", "TINS", "VISI"],
-  "Industrials": ["ASII", "UNTR", "HEXA", "IMPC", "ARNA", "SGER", "MASA", "BRMS", "AUTO", "GJTL"],
+  "Energy": ["ADRO", "PTBA", "MEDC", "PGAS", "AKRA", "ELSA", "RAJA", "ESSA", "DSSA", "HRUM"],
+  "Basic Materials": ["INKP", "TKIM", "INTP", "SMGR", "BRPT", "MDKA", "ANTM", "INCO", "ADMR", "TINS", "VISI", "TPIA", "BRMS"],
+  "Industrials": ["ASII", "UNTR", "HEXA", "IMPC", "ARNA", "SGER", "MASA", "AUTO", "GJTL"],
   "Consumer Non-Cyclicals": ["ICBP", "INDF", "CPIN", "HMSP", "GGRM", "CMRY", "JPFA", "MYOR", "ROTI", "ULTJ", "UNVR", "AMRT"],
-  "Consumer Cyclicals": ["ERAA", "ACES", "MAPI", "LPPF", "RALS", "MSIN", "PGEO", "EMTK", "MAPA", "DSSA"],
+  "Consumer Cyclicals": ["ERAA", "ACES", "MAPI", "LPPF", "RALS", "MSIN", "EMTK", "MAPA", "BAIK", "MGLV"],
   "Healthcare": ["HEAL", "SILO", "MIKA", "PRDA", "DVLA", "TSPC", "PYFA", "SOHO", "KLBF", "SIDO"],
   "Financials": ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS", "BBTN", "PNBN", "NISP", "BTPS", "BNGA", "ARTO", "BJTM", "MEGA", "BDMN", "BBYB", "PEGE"],
   "Properties & Real Estate": ["BSDE", "CTRA", "SMRA", "PWON", "LPKR", "DILD", "APLN", "JRPT", "PPRO", "MKPI"],
-  "Technology": ["GOTO", "BUKA", "DCII", "CASH", "EDGE", "MTDL", "LUCK", "TECH", "DMMX", "NELY"],
-  "Infrastructures": ["TLKM", "TOWR", "TBIG", "JSMR", "WIKA", "WSKT", "PTPP", "ACST", "ISAT", "EXCL"],
-  "Transportation & Logistic": ["GIAA", "BIRD", "SMDR", "TMAS", "ASSA", "JAYA", "BLTA", "SAFE", "HELI", "SAPX", "WBSA"]
+  "Technology": ["GOTO", "BUKA", "DCII", "CASH", "EDGE", "MTDL", "LUCK", "TECH", "DMMX"],
+  "Infrastructures": ["TLKM", "TOWR", "TBIG", "JSMR", "WIKA", "WSKT", "PTPP", "ACST", "ISAT", "EXCL", "BREN", "PGEO"],
+  "Transportation & Logistic": ["GIAA", "BIRD", "SMDR", "TMAS", "ASSA", "JAYA", "BLTA", "SAFE", "HELI", "SAPX", "WBSA", "NELY"]
 }

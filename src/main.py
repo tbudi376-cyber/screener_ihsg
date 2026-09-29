@@ -20,7 +20,7 @@ from src.mcp_client import McpClient, load_sector_config, extract_closes
 from src.models import (
     OHLCRow, Candidate, Stock, ValidationResult, RRGPoint, QuotaUsageBreakdown,
 )
-from src.sector_rrg import compute_rrg_for_stock, rank_sectors
+from src.sector_rrg import compute_rrg_for_stock, rank_sectors, select_representative_stocks
 from src.screener import parse_screener_rows, filter_by_sectors, filter_by_bucket, rank_candidates
 from src.validator import assemble_validation, build_validation_request_list
 from src.report import generate_daily_report, save_report
@@ -106,13 +106,30 @@ def run_pipeline(
     raw_rows = screener_data.get("rows", [])
     all_candidates = parse_screener_rows(raw_rows, config["sector_config"])
 
+    # Log unmapped candidate stocks
+    unmapped_candidates = [c.stock.code for c in all_candidates if c.stock.sector == "Unknown"]
+    if unmapped_candidates:
+        print(f"Log: Terdeteksi {len(unmapped_candidates)} saham kandidat tidak terpetakan ke sektor resmi IDX: {unmapped_candidates}")
+
     # 2. Compute RRG for sectors vs benchmark
     # Official convention: benchmark_ohlc is ordered oldest-to-newest
     bench_closes = extract_closes(benchmark_ohlc)
+    rep_stocks_map = select_representative_stocks(
+        config["sector_config"], list(config["sector_config"].keys()), min_stocks=5
+    )
     sector_points: dict[str, list[RRGPoint]] = {}
     for sector, stocks_data in sector_stock_closes.items():
+        if sector == "Unknown" or sector not in config["sector_config"]:
+            unmapped_codes = list(stocks_data.keys())
+            print(f"Log: Menyaring sektor non-resmi '{sector}' ({len(unmapped_codes)} saham: {unmapped_codes}) dari tabel RRG.")
+            continue
+        rep_codes = set(rep_stocks_map.get(sector, []))
+        has_configured_stocks = any(c in rep_codes for c in stocks_data.keys())
         points = []
         for code, closes in stocks_data.items():
+            if has_configured_stocks and code not in rep_codes:
+                print(f"Log: Menyaring saham non-sampel '{code}' dari perhitungan RRG sektor '{sector}' (mencegah kontaminasi kandidat).")
+                continue
             if len(closes) >= 11 and len(bench_closes) >= 11:
                 # Ensure equal length, matching the end of series
                 min_len = min(len(closes), len(bench_closes))
@@ -125,7 +142,7 @@ def run_pipeline(
     sector_ranking = rank_sectors(sector_points)
 
     # Calculate actual stock sample count per sector for report transparency
-    sector_counts = [len(stocks) for stocks in sector_stock_closes.values() if stocks]
+    sector_counts = [len(pts) for pts in sector_points.values() if pts]
     if sector_counts and isinstance(quota_used, QuotaUsageBreakdown):
         min_c = min(sector_counts)
         max_c = max(sector_counts)
@@ -186,9 +203,10 @@ def run_pipeline(
         candidates=top_candidates,
         validations=validations,
         quota_used=quota_used,
+        output_dir=target_output_dir,
     )
 
-    saved_path = save_report(report_content, target_output_dir)
+    saved_path = save_report(report_content, target_output_dir, date_str=report_date)
     return saved_path
 
 

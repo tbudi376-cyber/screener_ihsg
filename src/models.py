@@ -51,6 +51,9 @@ class TradePlan:
     rr_ratio: float
     atr: float
     warning: str = ""
+    max_entry: float = 0.0
+    rr_at_max_entry: float = 0.0
+    status: str = "VALID"
 
 
 @dataclass
@@ -76,6 +79,7 @@ class ValidationResult:
     fundamental_data: dict = field(default_factory=dict)
     fallback_reason: str = ""
     personality_stats: dict = field(default_factory=dict)
+    sector_status_change_disclaimer: str = ""
 
 
 @dataclass

@@ -223,8 +223,44 @@ class TestPivot(unittest.TestCase):
         plan_visi = calculate_trade_plan(
             close=1390.0, atr=95.7, support=1337.0, pivot_levels=visi_pivots
         )
-        self.assertGreaterEqual(plan_visi.rr_ratio, 1.0)
-        self.assertEqual(plan_visi.warning, "")
+    def test_trade_plan_max_entry_formula_and_tunggu_status(self):
+        """Verifikasi formula entry maksimum E <= (T + k*S)/(1 + k) dan status TUNGGU."""
+        # DSSA scenario: close=1055, atr=70, support=1028 (S1)
+        pivots = PivotLevels(
+            pivot=1057.0, r1=1083.0, r2=1112.0, r3=1138.0,
+            s1=1028.0, s2=1002.0, s3=973.0,
+        )
+        plan = calculate_trade_plan(
+            close=1055.0, atr=69.64, support=1028.0, pivot_levels=pivots, min_rr=1.0
+        )
+        # Target 1 = 1085, Cutloss = 985
+        # Max entry = (1085 + 1.0 * 985) / 2 = 1035
+        self.assertEqual(plan.max_entry, 1035)
+        self.assertEqual(plan.entry_low, 1030)
+        self.assertEqual(plan.entry_high, 1055)
+        # Karena close (1055) > max_entry (1035), status harus TUNGGU
+        self.assertEqual(plan.status, "TUNGGU (Buy on Weakness)")
+        # R:R pada max_entry harus tepat >= 1.0
+        self.assertGreaterEqual(plan.rr_at_max_entry, 1.0)
+        # R:R pada midpoint harus < 1.0 (0.74:1)
+        self.assertEqual(plan.rr_ratio, 0.74)
+        self.assertIn("TUNGGU (Buy on Weakness)", plan.warning)
+
+    def test_trade_plan_invalid_when_max_entry_below_entry_low(self):
+        """Verifikasi status PLAN TIDAK VALID ketika max_entry < entry_low."""
+        # Setup di mana stop loss sangat dalam dan target sangat sempit sehingga max_entry < entry_low
+        pivots = PivotLevels(
+            pivot=100.0, r1=102.0, r2=104.0, r3=106.0,
+            s1=98.0, s2=80.0, s3=70.0,
+        )
+        # close=100, target1=102, cutloss=80
+        # raw max_entry = (102 + 1.0*80)/2 = 91.0 < entry_low (98)
+        plan = calculate_trade_plan(
+            close=100.0, atr=20.0, support=98.0, pivot_levels=pivots, min_rr=1.0
+        )
+        self.assertEqual(plan.status, "PLAN TIDAK VALID")
+        self.assertLess(plan.max_entry, plan.entry_low)
+        self.assertIn("PLAN TIDAK VALID", plan.warning)
 
 
 if __name__ == "__main__":

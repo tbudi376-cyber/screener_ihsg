@@ -198,5 +198,60 @@ class TestReport(unittest.TestCase):
                 self.assertEqual(read_back, content)
 
 
+    def test_report_shows_sector_status_change_disclaimer(self):
+        """Verifikasi disclaimer otomatis jika sektor kandidat berubah signifikan (misal Lagging -> Leading)."""
+        prev_quadrants = {"Energy": "Lagging"}
+        curr_ranking = [("Energy", "Leading", 4.0, 103.4, 100.2)]
+        energy_stock = Stock(code="DSSA", name="Dian Swastatika Sentosa Tbk.", sector="Energy")
+        candidate = Candidate(stock=energy_stock, bucket="SINYAL SENYAP", summary="senyap")
+        val = ValidationResult(
+            stock=energy_stock,
+            analysis_text="Analisis DSSA",
+        )
+        report = generate_daily_report(
+            "2026-09-28",
+            curr_ranking,
+            [candidate],
+            [val],
+            10,
+            previous_sector_quadrants=prev_quadrants,
+        )
+        self.assertIn("PERHATIAN PERUBAHAN STATUS SEKTOR", report)
+        self.assertIn("Lagging -> Leading", report)
+        self.assertIn("tidak serta-merta menggantikan sinyal teknikal individual", report)
+
+    def test_report_contains_energy_score_decomposition_note(self):
+        """Verifikasi catatan dekomposisi kenaikan skor Energy memisahkan agregasi vs komposisi."""
+        report = generate_daily_report(
+            "2026-09-28", self.sector_ranking, self.candidates, self.validations, 25
+        )
+        self.assertIn("Dekomposisi Perubahan Skor Sektor Energy (3.4 -> 4.0)", report)
+        self.assertIn("Porsi Perbaikan Metode Agregasi", report)
+        self.assertIn("Porsi Perubahan Komposisi Anggota", report)
+
+    def test_get_previous_sector_quadrants(self):
+        """Verifikasi parsing kuadran sektor dari laporan hari sebelumnya."""
+        from src.report import get_previous_sector_quadrants
+        with tempfile.TemporaryDirectory() as tmpdir:
+            prev_content = """# Screener IHSG - 2026-09-27
+## 1. Ranking Sektor (RRG)
+
+| Rank | Sektor | Kuadran | Skor | RS-Ratio | RS-Momentum |
+|------|--------|---------|------|----------|-------------|
+| 1 | Energy | Leading | 3.4 | 103.7 | 100.2 |
+| 2 | Transportation & Logistic | Improving | 2.8 | 101.8 | 100.0 |
+| 3 | Financials | Lagging | 1.8 | 96.6 | 99.7 |
+
+## 2. Kandidat Screening
+"""
+            prev_path = Path(tmpdir) / "screener_2026-09-27.md"
+            prev_path.write_text(prev_content, encoding="utf-8")
+
+            parsed = get_previous_sector_quadrants(tmpdir, "2026-09-28")
+            self.assertEqual(parsed.get("Energy"), "Leading")
+            self.assertEqual(parsed.get("Transportation & Logistic"), "Improving")
+            self.assertEqual(parsed.get("Financials"), "Lagging")
+
+
 if __name__ == "__main__":
     unittest.main()

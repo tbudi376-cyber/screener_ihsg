@@ -155,6 +155,118 @@ class TestValidator(unittest.TestCase):
         self.assertIn("DER: 0.75x", text)
         self.assertIn("Pertumbuhan Pendapatan", text)
 
+    def test_assemble_validation_auto_extracts_raw_fundamentals(self):
+        raw_fin_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {
+                        "data": {
+                            "penjualan_dan_pendapatan_usaha": 10e12,
+                            "laba_rugi": 1e12,
+                            "laba_rugi_per_saham": {
+                                "laba_per_saham_dasar_diatribusikan_kepada_pemilik_entitas_induk": {
+                                    "total": 50.0
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
+            "BALANCE_SHEET": {
+                "items": [
+                    {
+                        "data": {
+                            "liabilitas_dan_ekuitas": {
+                                "liabilitas": {"total": 10e12},
+                                "ekuitas": {"total": 10e12},
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text="Test analysis",
+            broker_data={"brokers": []},
+            ohlc_rows=self.ohlc_rows,
+            fundamental_data=raw_fin_data,
+        )
+        self.assertEqual(result.fundamental_data["eps"], 50.0)
+        self.assertEqual(result.fundamental_data["der"], 1.0)
+        text = format_validation_summary(result)
+        self.assertIn("EPS: Rp50", text)
+        self.assertIn("DER: 1.0x", text)
+
+    def test_extract_fundamental_metrics_ttm_4_quarters_and_continuity(self):
+        """Verifikasi perhitungan PER TTM dari jumlah 4 kuartal dan deteksi diskontinuitas."""
+        mock_4q_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2025", "year": "2025", "quarter": "4", "data": {"laba_rugi_per_saham": 400.0}},
+                    {"label": "Q3 2025", "year": "2025", "quarter": "3", "data": {"laba_rugi_per_saham": 300.0}},
+                    # Missing Q2 2025
+                    {"label": "Q1 2025", "year": "2025", "quarter": "1", "data": {"laba_rugi_per_saham": 100.0}},
+                    {"label": "Q4 2024", "year": "2024", "quarter": "4", "data": {"laba_rugi_per_saham": 380.0}},
+                    {"label": "Q3 2024", "year": "2024", "quarter": "3", "data": {"laba_rugi_per_saham": 280.0}},
+                ]
+            },
+            "BALANCE_SHEET": {
+                "items": [
+                    {
+                        "data": {
+                            "liabilitas_dan_ekuitas": {
+                                "liabilitas": {"total": 30e12},
+                                "ekuitas": {
+                                    "total": 35e12,
+                                    "ekuitas_yang_diatribusikan_kepada_pemilik_entitas_induk": {"total": 25e12}
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(mock_4q_data, close_price=1050.0)
+        # Diskontinuitas Q2 terlewat
+        self.assertTrue(metrics["needs_manual_verification"])
+        self.assertIn("tidak kontinu", metrics["verification_note"])
+
+    def test_extract_fundamental_metrics_ttm_continuous(self):
+        """Verifikasi perhitungan TTM dengan data kontinu."""
+        mock_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2025", "year": "2025", "quarter": "4", "data": {"laba_rugi_per_saham": 400.0}},
+                    {"label": "Q3 2025", "year": "2025", "quarter": "3", "data": {"laba_rugi_per_saham": 300.0}},
+                    {"label": "Q2 2025", "year": "2025", "quarter": "2", "data": {"laba_rugi_per_saham": 200.0}},
+                    {"label": "Q1 2025", "year": "2025", "quarter": "1", "data": {"laba_rugi_per_saham": 100.0}},
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(mock_data, close_price=1050.0)
+        # Standalone: Q4=100, Q3=100, Q2=100, Q1=100 => TTM = 400
+        self.assertEqual(metrics["eps_ttm"], 400.0)
+        self.assertFalse(metrics.get("needs_manual_verification"))
+
+    def test_per_cap_high_priced_stock(self):
+        """Uji saham harga tinggi dengan EPS kecil (MGLV scenario) tidak menghasilkan PER 1000x+."""
+        mock_data = {
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2025", "year": "2025", "quarter": "4", "data": {"laba_rugi_per_saham": 11.0}},
+                    {"label": "Q3 2025", "year": "2025", "quarter": "3", "data": {"laba_rugi_per_saham": 8.0}},
+                    {"label": "Q2 2025", "year": "2025", "quarter": "2", "data": {"laba_rugi_per_saham": 5.0}},
+                    {"label": "Q1 2025", "year": "2025", "quarter": "1", "data": {"laba_rugi_per_saham": 2.0}},
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(mock_data, close_price=15000.0)
+        # TTM EPS = 11.0
+        # PER = 15000 / 11 = 1363.63 -> should cap at N/M
+        self.assertEqual(metrics["eps_ttm"], 11.0)
+        self.assertEqual(metrics["per"], "N/M")
+
     def test_format_validation_fallback_reason(self):
         amrt_candidate = Candidate(
             stock=Stock(code="AMRT", name="Sumber Alfaria Trijaya Tbk.", sector="Consumer Non-Cyclicals"),
@@ -336,6 +448,80 @@ class TestValidator(unittest.TestCase):
         )
         self.assertTrue(val.personality_stats["is_weak_history"])
         self.assertIn("42.0% ⚠️ Historis Lemah", cand.wr_event_flag)
+
+    def test_expand_abbreviated_prices_high_priced_stock(self):
+        """Verifikasi ekspansi format harga 'Rp15K' menjadi presisi penuh sesuai OHLC dan PivotLevels."""
+        from src.validator import expand_abbreviated_prices
+        from src.models import PivotLevels
+        analysis_sample = """**📈 PRICE ACTION**
+  🟢 **Rp15K** (Rp25 | +0.17%)
+  Prev: Rp15K | Open: Rp15K
+  High: Rp15K | Low: Rp14K
+  Range: Rp750 (5.0%)
+  **Support & Resistance:**
+  Daily: R2 Rp16K | R1 Rp15K | P Rp15K | S1 Rp15K | S2 Rp14K
+"""
+        rows = [
+            OHLCRow(date="2026-09-25", open=15800, high=15900, low=14975, close=14975, volume=1e6, value=1e10),
+            OHLCRow(date="2026-09-28", open=15000, high=15100, low=14350, close=15000, volume=1e6, value=1e10),
+        ]
+        pivots = PivotLevels(pivot=14817, r1=15283, r2=15567, r3=16033, s1=14533, s2=14067, s3=13783)
+        expanded = expand_abbreviated_prices(analysis_sample, rows, pivots)
+
+        self.assertIn("🟢 **Rp15,000**", expanded)
+        self.assertIn("Prev: Rp14,975", expanded)
+        self.assertIn("Open: Rp15,000", expanded)
+        self.assertIn("High: Rp15,100", expanded)
+        self.assertIn("Low: Rp14,350", expanded)
+        self.assertIn("Daily: R2 Rp15,567 | R1 Rp15,283 | P Rp14,817 | S1 Rp14,533 | S2 Rp14,067", expanded)
+        self.assertNotIn("Prev: Rp15K", expanded)
+        self.assertNotIn("Low: Rp14K", expanded)
+
+    def test_per_relative_threshold_nm_for_mglv(self):
+        """Verifikasi PER relatif (earnings yield < 0.5% atau PER > 200x) menghasilkan N/M pada MGLV."""
+        fin_data = {
+            "stock_code": "MGLV",
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2023", "year": "2023", "quarter": "4", "data": {"laba_rugi_per_saham": 11.0}},
+                ]
+            }
+        }
+        # Price 15,000 with EPS 11.0 -> PER 1363.6x -> N/M
+        metrics = extract_fundamental_metrics(fin_data, close_price=15000.0)
+        self.assertEqual(metrics["per"], "N/M")
+
+    def test_dssa_stock_split_corporate_action_flag(self):
+        """Verifikasi deteksi aksi korporasi stock split 1:25 DSSA yang belum disesuaikan."""
+        fin_data = {
+            "stock_code": "DSSA",
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2025", "year": "2025", "quarter": "4", "data": {"laba_rugi_per_saham": 170.88}},
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(fin_data, close_price=1055.0)
+        self.assertTrue(metrics["needs_manual_verification"])
+        self.assertIn("Stock Split 1:25", metrics["verification_note"])
+        self.assertLess(metrics["eps_ttm"], 50.0)
+        self.assertGreater(metrics["per"], 25.0)
+
+    def test_fundamental_data_very_stale_flag(self):
+        """Verifikasi flag otomatis 'Data Fundamental Sangat Basi' jika periode laporan > 3 kuartal di belakang kuartal berjalan."""
+        fin_data = {
+            "stock_code": "MGLV",
+            "INCOME_STATEMENT": {
+                "items": [
+                    {"label": "Q4 2023", "year": "2023", "quarter": "4", "data": {"laba_rugi_per_saham": 11.0}},
+                ]
+            }
+        }
+        metrics = extract_fundamental_metrics(fin_data, close_price=15000.0)
+        self.assertTrue(metrics["is_very_stale"])
+        self.assertGreater(metrics["staleness_gap_quarters"], 3)
+        self.assertIn("Data Fundamental Sangat Basi", metrics["verification_note"])
+        self.assertIn("Q4 2023", metrics["verification_note"])
 
 
 if __name__ == "__main__":

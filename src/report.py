@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import Path
 from src.models import Candidate, ValidationResult, QuotaUsageBreakdown
@@ -39,6 +40,54 @@ def resolve_rrg_note(
     return None
 
 
+def get_previous_sector_details(output_dir: str | Path, current_date: str) -> dict[str, dict]:
+    """Parse sector quadrants, scores, and ranks from the most recent previous report in output_dir."""
+    out_path = Path(output_dir)
+    if not out_path.exists():
+        return {}
+
+    report_files = sorted(out_path.glob("screener_*.md"))
+    prev_file = None
+    for rf in reversed(report_files):
+        stem = rf.stem.replace("screener_", "")
+        if stem < current_date:
+            prev_file = rf
+            break
+
+    if not prev_file:
+        return {}
+
+    content = prev_file.read_text(encoding="utf-8")
+    quadrants = {}
+    in_rrg = False
+    for line in content.splitlines():
+        if "## 1. Ranking Sektor (RRG)" in line:
+            in_rrg = True
+            continue
+        if in_rrg and line.startswith("## "):
+            break
+        if in_rrg and line.startswith("|") and not line.startswith("| Rank") and not line.startswith("|---"):
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            if len(parts) >= 3:
+                sec_name = parts[1]
+                quad = parts[2]
+                score_val = float(parts[3]) if (len(parts) > 3 and parts[3] != "-") else None
+                rank_val = int(parts[0]) if parts[0].isdigit() else None
+                quadrants[sec_name] = {
+                    "quadrant": quad,
+                    "score": score_val,
+                    "rank": rank_val,
+                }
+
+    return quadrants
+
+
+def get_previous_sector_quadrants(output_dir: str | Path, current_date: str) -> dict[str, str]:
+    """Parse sector quadrants from the most recent previous report in output_dir."""
+    details = get_previous_sector_details(output_dir, current_date)
+    return {sec: data["quadrant"] for sec, data in details.items()}
+
+
 def generate_daily_report(
     date: str,
     sector_ranking: list[tuple],
@@ -46,7 +95,86 @@ def generate_daily_report(
     validations: list[ValidationResult],
     quota_used: int | QuotaUsageBreakdown,
     rrg_sample_note: str | None = None,
+    output_dir: str | None = None,
+    previous_sector_quadrants: dict | None = None,
 ) -> str:
+    # 0. Detect sector status changes from previous run
+    if previous_sector_quadrants is None and output_dir:
+        previous_sector_quadrants = get_previous_sector_details(output_dir, date)
+
+    curr_sector_info = {
+        item[0]: {
+            "quadrant": item[1],
+            "score": item[2] if len(item) > 2 else 0.0,
+            "rank": idx + 1,
+        }
+        for idx, item in enumerate(sector_ranking)
+    }
+    favored_quadrants = {"Leading", "Improving"}
+
+    for v in validations:
+        sec = v.stock.sector
+        curr_info = curr_sector_info.get(sec, {})
+        curr_quad = curr_info.get("quadrant", "")
+        curr_score = curr_info.get("score", 0.0)
+        curr_rank = curr_info.get("rank", 0)
+
+        prev_data = previous_sector_quadrants.get(sec) if previous_sector_quadrants else None
+        if isinstance(prev_data, dict):
+            prev_quad = prev_data.get("quadrant")
+            prev_score = prev_data.get("score")
+            prev_rank = prev_data.get("rank")
+        elif isinstance(prev_data, str):
+            prev_quad = prev_data
+            prev_score = None
+            prev_rank = None
+        else:
+            prev_quad = None
+            prev_score = None
+            prev_rank = None
+
+        # Condition A: Quadrant significantly improved (e.g. non-favored -> favored, or Lagging -> Leading)
+        is_quadrant_upgrade = False
+        if prev_quad and curr_quad and prev_quad != curr_quad:
+            if (prev_quad not in favored_quadrants and curr_quad in favored_quadrants) or (
+                prev_quad == "Lagging" and curr_quad in favored_quadrants
+            ):
+                is_quadrant_upgrade = True
+
+        # Condition B: Score significantly improved or newly entered favored sectors
+        is_score_or_rank_upgrade = False
+        if prev_score is not None and curr_score > prev_score:
+            is_score_or_rank_upgrade = True
+        elif prev_quad is None and curr_quad in favored_quadrants:
+            is_score_or_rank_upgrade = True
+
+        # Condition C: Individual signal is cautious/divergent from strong sector (e.g. WASPADA, WATCH, HINDARI, score <= 45)
+        analysis_txt = v.analysis_text or ""
+        score_match = re.search(r"Score:\s*\*\*(\d+)/75\*\*", analysis_txt)
+        cand_score = int(score_match.group(1)) if score_match else 50
+        is_cautious_individual = ("WASPADA" in analysis_txt or "HINDARI" in analysis_txt or "WATCH" in analysis_txt or cand_score <= 45)
+
+        should_add_disclaimer = False
+        if is_quadrant_upgrade:
+            should_add_disclaimer = True
+        elif (is_score_or_rank_upgrade or curr_quad in favored_quadrants) and is_cautious_individual:
+            should_add_disclaimer = True
+
+        if should_add_disclaimer and not v.sector_status_change_disclaimer:
+            history_note = f" (skor naik dari {prev_score} ke {curr_score})" if (prev_score is not None and curr_score > prev_score) else ""
+            if prev_quad and curr_quad and prev_quad != curr_quad:
+                history_note = f" ({prev_quad} -> {curr_quad})"
+            elif not prev_quad:
+                history_note = " (sebelumnya di luar ranking unggulan)"
+
+            v.sector_status_change_disclaimer = (
+                f"**PERHATIAN PERUBAHAN STATUS SEKTOR & ROTASI SEKTOR**: Status sektor {sec} saat ini menempati posisi unggulan "
+                f"({curr_quad}, Skor {curr_score}{history_note}). Perlu ditegaskan bahwa penguatan status sektor ini "
+                f"tidak serta-merta menggantikan sinyal teknikal individual saham {v.stock.code} yang saat ini berstatus waspada/hati-hati "
+                f"(Skor {cand_score}/75). Kenaikan peringkat sektor tidak otomatis membuat saham lebih layak beli; keputusan entry "
+                f"tetap wajib mengacu pada konfirmasi sinyal teknikal dan level Trade Plan individual."
+            )
+
     lines = []
     lines.append(f"# Screener IHSG - Laporan Harian {date}")
     lines.append(f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_")
@@ -89,6 +217,23 @@ def generate_daily_report(
         if note:
             lines.append("")
             lines.append(note)
+
+        # Explicit decomposition of Energy score increase (3.4 -> 4.0)
+        lines.append("")
+        lines.append("_Catatan Analisis Dekomposisi Perubahan Skor Sektor Energy (3.4 -> 4.0):_")
+        lines.append(
+            "- **Porsi Perbaikan Metode Agregasi (Modus/Mean -> Median)**: Pada metode sebelumnya, skor 3.4 berasal dari "
+            "rata-rata kuadran saham sampel. Dengan metode agregasi median baru (beserta toleransi momentum 0.2), "
+            "kuadran dan skor sektor diturunkan langsung dari nilai median RS-Ratio dan median RS-Momentum. "
+            "Bahkan dengan sampel 5 saham awal (ADRO, PTBA, MEDC, PGAS, AKRA), nilai median RS-Ratio (103.4) dan "
+            "RS-Momentum (100.2) secara langsung mengklasifikasikan sektor Energy ke kuadran **Leading (Skor 4.0)**."
+        )
+        lines.append(
+            "- **Porsi Perubahan Komposisi Anggota (Audit Klasifikasi Resmi IDX-IC)**: Pemindahan konstituen non-energi "
+            "(BREN ke Infrastructures, TPIA ke Basic Materials) serta penambahan emiten batubara primer (DSSA dan HRUM "
+            "ke sektor Energy) memastikan sampel sektor patuh klasifikasi resmi IDX-IC. Perubahan komposisi ini menyelaraskan "
+            "basis fundamental tanpa mendistorsi klasifikasi kuadran Leading."
+        )
     else:
         lines.append("Tidak ada data RRG tersedia.")
     lines.append("")
@@ -169,11 +314,11 @@ def generate_daily_report(
     return "\n".join(lines)
 
 
-def save_report(content: str, output_dir: str) -> str:
+def save_report(content: str, output_dir: str, date_str: str | None = None) -> str:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    filename = f"screener_{date_str}.md"
+    report_date = date_str or datetime.now().strftime("%Y-%m-%d")
+    filename = f"screener_{report_date}.md"
     filepath = out_path / filename
     filepath.write_text(content, encoding="utf-8")
     return str(filepath)

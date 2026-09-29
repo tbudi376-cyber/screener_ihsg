@@ -4,3 +4,4 @@ __pycache__/
 output/*.md
 .venv/
 *.egg-info/
+scratch/

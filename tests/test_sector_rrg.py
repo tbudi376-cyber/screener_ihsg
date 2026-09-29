@@ -136,7 +136,7 @@ class TestRRG(unittest.TestCase):
         self.assertEqual(selected["Financials"], ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS"])
 
     def test_rank_sectors_aggregates_5_stocks_per_sector(self):
-        """Temuan 1: rank_sectors menghitung skor dan rata-rata dari 5 saham per sektor."""
+        """Temuan 1: rank_sectors menghitung skor dan median dari saham per sektor."""
         sector_points = {
             "Financials": [
                 RRGPoint(code="BBCA", rs_ratio=105.0, rs_momentum=102.0, quadrant="Leading"),
@@ -155,20 +155,62 @@ class TestRRG(unittest.TestCase):
         }
         ranked = rank_sectors(sector_points)
         self.assertEqual(len(ranked), 2)
-        # Financials has 3 Leading, 1 Improving, 1 Weakening -> dominant Leading
+        # Financials median ratio=103.0, median mom=101.0 -> Leading, score=4.0
         fin = ranked[0]
         self.assertEqual(fin[0], "Financials")
         self.assertEqual(fin[1], "Leading")
-        # avg score = (4+4+4+3+2)/5 = 3.4
-        self.assertEqual(fin[2], 3.4)
-        # avg rs_ratio = (105+103+104+99+101)/5 = 102.4
-        self.assertEqual(fin[3], 102.4)
+        self.assertEqual(fin[2], 4.0)
+        self.assertEqual(fin[3], 103.0)
+        self.assertEqual(fin[4], 101.0)
 
-        # Energy has 5 Lagging -> dominant Lagging, score = 1.0
+        # Energy median ratio=97.0, median mom=98.0 -> Lagging, score=1.0
         nrg = ranked[1]
         self.assertEqual(nrg[0], "Energy")
         self.assertEqual(nrg[1], "Lagging")
         self.assertEqual(nrg[2], 1.0)
+        self.assertEqual(nrg[3], 97.0)
+        self.assertEqual(nrg[4], 98.0)
+
+    def test_classify_quadrant_with_tolerance(self):
+        """Verifikasi toleransi sekitar 100 (misalnya 0.2) untuk nilai momentum ketat."""
+        # 99.85 dengan tolerance 0.2 diakui sebagai >= 100
+        self.assertEqual(classify_quadrant(102.0, 99.85, tolerance=0.2), "Leading")
+        self.assertEqual(classify_quadrant(98.0, 99.85, tolerance=0.2), "Improving")
+        # Nilai di bawah tolerance (misal 99.7) tetap Lagging / Weakening
+        self.assertEqual(classify_quadrant(98.0, 99.70, tolerance=0.2), "Lagging")
+        self.assertEqual(classify_quadrant(102.0, 99.70, tolerance=0.2), "Weakening")
+
+    def test_rank_sectors_filters_out_unknown_sector(self):
+        """Sektor 'Unknown' harus disaring dari hasil ranking RRG."""
+        sector_points = {
+            "Unknown": [
+                RRGPoint(code="MGLV", rs_ratio=142.33, rs_momentum=101.21, quadrant="Leading"),
+                RRGPoint(code="BAIK", rs_ratio=53.28, rs_momentum=99.69, quadrant="Lagging"),
+            ],
+            "Energy": [
+                RRGPoint(code="ADRO", rs_ratio=105.0, rs_momentum=101.0, quadrant="Leading"),
+            ],
+        }
+        ranked = rank_sectors(sector_points)
+        sector_names = [r[0] for r in ranked]
+        self.assertNotIn("Unknown", sector_names)
+        self.assertIn("Energy", sector_names)
+
+    def test_quadrant_always_consistent_with_printed_metrics(self):
+        """Unit test: Kuadran yang dihasilkan rank_sectors SELALU konsisten dengan RS-Ratio & RS-Momentum."""
+        sector_points = {
+            "Transportation & Logistic": [
+                RRGPoint(code="GIAA", rs_ratio=96.49, rs_momentum=99.27, quadrant="Lagging"),
+                RRGPoint(code="ASSA", rs_ratio=87.80, rs_momentum=99.87, quadrant="Lagging"),
+                RRGPoint(code="BIRD", rs_ratio=98.10, rs_momentum=100.08, quadrant="Improving"),
+                RRGPoint(code="TMAS", rs_ratio=109.19, rs_momentum=99.70, quadrant="Weakening"),
+                RRGPoint(code="SMDR", rs_ratio=121.83, rs_momentum=100.84, quadrant="Leading"),
+            ]
+        }
+        ranked = rank_sectors(sector_points, tolerance=0.2)
+        for sector, quadrant, score, rs_r, rs_m in ranked:
+            expected_quad = classify_quadrant(rs_r, rs_m, tolerance=0.2)
+            self.assertEqual(quadrant, expected_quad, f"Quadrant '{quadrant}' must match classify_quadrant result '{expected_quad}' for {sector}")
 
 
 if __name__ == "__main__":

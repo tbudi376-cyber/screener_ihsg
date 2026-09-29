@@ -65,12 +65,35 @@ def _ema(data: list[float], period: int) -> list[float]:
     return result
 
 
-def classify_quadrant(rs_ratio: float, rs_momentum: float) -> str:
-    if rs_ratio >= 100 and rs_momentum >= 100:
+OFFICIAL_IDX_SECTORS = {
+    "Energy",
+    "Basic Materials",
+    "Industrials",
+    "Consumer Non-Cyclicals",
+    "Consumer Cyclicals",
+    "Healthcare",
+    "Financials",
+    "Properties & Real Estate",
+    "Technology",
+    "Infrastructures",
+    "Transportation & Logistic",
+    "Transportation",
+}
+
+
+def classify_quadrant(rs_ratio: float, rs_momentum: float, tolerance: float = 0.0) -> str:
+    """Classify RRG quadrant from RS-Ratio and RS-Momentum.
+    
+    Tolerance (e.g. 0.2) allows values near 100 to be recognized consistently
+    across sectors where momentum values are tightly clustered around 100.
+    """
+    ratio_high = rs_ratio >= (100.0 - tolerance)
+    mom_high = rs_momentum >= (100.0 - tolerance)
+    if ratio_high and mom_high:
         return "Leading"
-    if rs_ratio < 100 and rs_momentum >= 100:
+    if not ratio_high and mom_high:
         return "Improving"
-    if rs_ratio >= 100 and rs_momentum < 100:
+    if ratio_high and not mom_high:
         return "Weakening"
     return "Lagging"
 
@@ -96,34 +119,45 @@ def compute_rrg_for_stock(
 
 def rank_sectors(
     sector_points: dict[str, list[RRGPoint]],
+    tolerance: float = 0.2,
 ) -> list[tuple[str, str, float, float, float]]:
     """Rank sectors by attractiveness.
 
-    Returns [(sector_name, dominant_quadrant, score, avg_rs_ratio, avg_rs_momentum), ...]
-    sorted primarily by quadrant score (Leading=4, Improving=3, Weakening=2, Lagging=1)
-    and secondarily by composite relative strength (RS-Ratio * RS-Momentum) to prevent
-    arbitrary ordering among sectors with identical quadrant scores.
+    Uses median aggregation across representative stocks per sector to prevent
+    distortion by individual stock outliers (e.g. SMDR, ERAA). All 4 columns
+    (Quadrant, Score, RS-Ratio, RS-Momentum) are derived from the exact same
+    median aggregation using classify_quadrant(med_ratio, med_momentum, tolerance).
+    Unknown or non-official sectors are strictly filtered out.
+
+    Returns [(sector_name, quadrant, score, median_rs_ratio, median_rs_momentum), ...]
+    sorted primarily by quadrant score (Leading=4.0, Improving=3.0, Weakening=2.0, Lagging=1.0)
+    and secondarily by composite relative strength (RS-Ratio * RS-Momentum).
     """
-    quadrant_score = {"Leading": 4, "Improving": 3, "Weakening": 2, "Lagging": 1}
+    import statistics
+
+    quadrant_score = {"Leading": 4.0, "Improving": 3.0, "Weakening": 2.0, "Lagging": 1.0}
     results = []
     for sector, points in sector_points.items():
         if not points:
             continue
-        scores = [quadrant_score[p.quadrant] for p in points]
-        avg_score = sum(scores) / len(scores)
-        avg_rs_ratio = sum(p.rs_ratio for p in points) / len(points)
-        avg_rs_momentum = sum(p.rs_momentum for p in points) / len(points)
+        if sector == "Unknown" or sector not in OFFICIAL_IDX_SECTORS:
+            continue
 
-        dominant = max(
-            set(p.quadrant for p in points),
-            key=lambda q: sum(1 for p in points if p.quadrant == q),
-        )
+        ratios = [p.rs_ratio for p in points]
+        moms = [p.rs_momentum for p in points]
+
+        med_rs_ratio = round(statistics.median(ratios), 2)
+        med_rs_momentum = round(statistics.median(moms), 2)
+
+        quadrant = classify_quadrant(med_rs_ratio, med_rs_momentum, tolerance=tolerance)
+        score = quadrant_score[quadrant]
+
         results.append((
             sector,
-            dominant,
-            round(avg_score, 2),
-            round(avg_rs_ratio, 2),
-            round(avg_rs_momentum, 2),
+            quadrant,
+            round(score, 2),
+            med_rs_ratio,
+            med_rs_momentum,
         ))
 
     # Sort primarily by quadrant score, secondarily by product of RS-Ratio * RS-Momentum
