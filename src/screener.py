@@ -1,5 +1,5 @@
 import re
-from src.models import Candidate, Stock
+from src.models import Candidate, Stock, OHLCRow
 
 
 def _find_sector(code: str, sector_config: dict[str, list[str]]) -> str:
@@ -83,10 +83,11 @@ def screen_mandiri_constituents(
 ) -> list[Candidate]:
     """Filter sector constituents according to PRD §6 & §7.3 philosophy:
     - Sektor kuadran Leading & Improving (favored_sectors)
-    - val > 1mil: value transaksi harian >= Rp1 Miliar
+    - val >= 1mil: value transaksi harian >= Rp1 Miliar (Hard Filter)
+    - high > low: gugurkan saham yang terkunci batas auto rejection (Hard Filter)
+    - close >= sma20: harga penutupan di atas atau sama dengan SMA20 (Hard Filter Tren)
     - vol > ma20vol: volume harian > MA20 volume
     - nbsa > 0: Net Foreign Buy harian > 0 (n_foreign > 0 atau f_buy > f_sell)
-    - close >= sma20: harga penutupan di atas atau sama dengan SMA20
     """
     candidates_with_score = []
 
@@ -98,40 +99,41 @@ def screen_mandiri_constituents(
                 continue
 
             latest = rows[-1]
-            # 1. val > 1mil (Rp 1 Miliar)
+            # Syarat 1 (Hard Filter): Nilai transaksi harian >= Rp 1 Miliar
             if latest.value < min_value:
+                continue
+
+            # Syarat 2 (Hard Filter): Gugurkan saham terkunci batas auto rejection (High == Low)
+            if latest.high <= latest.low:
                 continue
 
             sma20_vol = sum(r.volume for r in rows[-20:]) / 20.0
             sma20_close = sum(r.close for r in rows[-20:]) / 20.0
 
-            # 2. vol > ma20vol
+            # Syarat 3 (Hard Filter Tren Wajib): Harga penutupan di atas atau sama dengan SMA20
+            # Mencegah masuknya saham downtrend / falling knives (e.g. GOTO, TMAS)
+            if latest.close < sma20_close:
+                continue
+
+            # Syarat kelonggaran 3/4 HANYA berlaku untuk volume harian atau net buy asing:
             c_vol = (latest.volume > sma20_vol) if sma20_vol > 0 else False
-
-            # 3. nbsa > 0
             c_nbsa = (latest.n_foreign > 0) or (latest.f_buy > latest.f_sell)
-
-            # 4. close >= sma20
-            c_price = (latest.close >= sma20_close)
 
             vol_ratio = (latest.volume / sma20_vol) if sma20_vol > 0 else 1.0
             pct_above_ma = ((latest.close - sma20_close) / sma20_close * 100) if sma20_close > 0 else 0.0
 
-            criteria_count = int(c_vol) + int(c_nbsa) + int(c_price)
-            if criteria_count == 3:
+            if c_vol and c_nbsa:
                 bucket = "🟢 SINYAL MANDIRI (PRD §6)"
                 note = "Lolos 4/4 filter PRD (Val > 1M, Vol > MA20, NBSA > 0, Close >= SMA20)"
                 score = 100.0 + vol_ratio * 5.0 + (10.0 if latest.n_foreign > 0 else 0.0)
-            elif criteria_count == 2:
+            elif c_vol or c_nbsa:
                 bucket = "🥷 AKUMULASI MANDIRI (PRD §6)"
                 missed = []
                 if not c_vol:
                     missed.append("Vol <= MA20")
                 if not c_nbsa:
                     missed.append("NBSA <= 0")
-                if not c_price:
-                    missed.append("Close < SMA20")
-                note = f"Lolos 3/4 filter PRD ({', '.join(missed)})"
+                note = f"Lolos 3/4 filter PRD ({', '.join(missed)}, Tren di atas SMA20)"
                 score = 50.0 + vol_ratio * 3.0 + (5.0 if latest.n_foreign > 0 else 0.0)
             else:
                 continue

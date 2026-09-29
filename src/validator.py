@@ -197,6 +197,10 @@ def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dic
 
     inc = fin_data.get("INCOME_STATEMENT", {})
     bal = fin_data.get("BALANCE_SHEET", {})
+    if not inc and fin_data.get("report_type") == "INCOME_STATEMENT":
+        inc = fin_data
+    if not bal and fin_data.get("report_type") == "BALANCE_SHEET":
+        bal = fin_data
 
     inc_items = inc.get("items", [])
     bal_items = bal.get("items", [])
@@ -536,7 +540,13 @@ def assemble_validation(
         )
 
     fin_metrics = fundamental_data or {}
-    if "INCOME_STATEMENT" in fin_metrics or "BALANCE_SHEET" in fin_metrics or "CASH_FLOW_REPORT" in fin_metrics:
+    if (
+        "INCOME_STATEMENT" in fin_metrics
+        or "BALANCE_SHEET" in fin_metrics
+        or "CASH_FLOW_REPORT" in fin_metrics
+        or "items" in fin_metrics
+        or "report_type" in fin_metrics
+    ):
         close_px = latest.close if latest else 0.0
         fin_metrics = extract_fundamental_metrics(fin_metrics, close_price=close_px)
 

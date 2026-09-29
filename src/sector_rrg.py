@@ -84,10 +84,17 @@ OFFICIAL_IDX_SECTORS = {
 def classify_quadrant(rs_ratio: float, rs_momentum: float, tolerance: float = 0.0) -> str:
     """Classify RRG quadrant from RS-Ratio and RS-Momentum.
     
-    Tolerance (e.g. 0.2) allows values near 100 to be recognized consistently
-    across sectors where momentum values are tightly clustered around 100.
+    Standard RRG 4-quadrant Cartesian classification centered at (100, 100):
+    - Leading: RS-Ratio >= 100, RS-Momentum >= 100
+    - Improving: RS-Ratio < 100, RS-Momentum >= 100
+    - Weakening: RS-Ratio >= 100, RS-Momentum < 100
+    - Lagging: RS-Ratio < 100, RS-Momentum < 100
+
+    RS-Ratio must strictly be >= 100.0 to be in Leading or Weakening.
+    Underperforming sectors (RS-Ratio < 100) can never be Leading.
+    Tolerance only applies to momentum near 100 when explicitly specified.
     """
-    ratio_high = rs_ratio >= (100.0 - tolerance)
+    ratio_high = rs_ratio >= 100.0
     mom_high = rs_momentum >= (100.0 - tolerance)
     if ratio_high and mom_high:
         return "Leading"
@@ -119,7 +126,7 @@ def compute_rrg_for_stock(
 
 def rank_sectors(
     sector_points: dict[str, list[RRGPoint]],
-    tolerance: float = 0.2,
+    tolerance: float = 0.0,
 ) -> list[tuple[str, str, float, float, float]]:
     """Rank sectors by attractiveness.
 

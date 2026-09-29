@@ -212,6 +212,13 @@ class TestRRG(unittest.TestCase):
             expected_quad = classify_quadrant(rs_r, rs_m, tolerance=0.2)
             self.assertEqual(quadrant, expected_quad, f"Quadrant '{quadrant}' must match classify_quadrant result '{expected_quad}' for {sector}")
 
+    def test_classify_quadrant_healthcare_lagging(self):
+        """Koreksi Logika RRG: RS-Ratio 99.9 dan RS-Momentum 99.9 wajib Lagging (bukan Leading)."""
+        # Nilai di bawah 100 secara matematis berada di kuadran Lagging
+        self.assertEqual(classify_quadrant(99.9, 99.9), "Lagging")
+        self.assertEqual(classify_quadrant(99.9, 99.9, tolerance=0.0), "Lagging")
+        self.assertEqual(classify_quadrant(99.91, 99.90, tolerance=0.0), "Lagging")
+
 
 if __name__ == "__main__":
     unittest.main()

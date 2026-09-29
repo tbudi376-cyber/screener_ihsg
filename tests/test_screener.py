@@ -169,6 +169,52 @@ class TestScreener(unittest.TestCase):
         )
         self.assertEqual(results, [])
 
+    def test_screen_mandiri_constituents_rejects_downtrend_even_if_vol_and_nbsa_pass(self):
+        """Syarat tren (close >= sma20) adalah syarat wajib mutlak (hard filter).
+        Saham downtrend / falling knives (misal GOTO) harus digugurkan meski vol > ma20 dan nbsa > 0."""
+        from src.models import OHLCRow
+        from src.screener import screen_mandiri_constituents
+
+        # 19 rows at 50, latest drops to 37 (Downtrend, close 37 < SMA20 ~49.35)
+        # but latest has massive volume (20M) and large net foreign buy (+10M) and high value (7B)
+        rows_downtrend = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=50, high=52, low=49, close=50, volume=5e6, value=250e6, f_buy=1e6, f_sell=1e6, n_foreign=0)
+            for i in range(19)
+        ]
+        rows_downtrend.append(
+            OHLCRow(date="2026-09-20", open=38, high=39, low=36, close=37, volume=20e6, value=7e9, f_buy=15e6, f_sell=5e6, n_foreign=10e6)
+        )
+
+        stock_ohlc_map = {"GOTO": rows_downtrend}
+        results = screen_mandiri_constituents(
+            favored_sectors=["Technology"],
+            sector_config=self.sector_config,
+            stock_ohlc_map=stock_ohlc_map,
+        )
+        self.assertEqual(results, [])
+
+    def test_screen_mandiri_constituents_rejects_auto_rejection(self):
+        """Gugurkan saham yang terkunci batas auto rejection (High == Low)."""
+        from src.models import OHLCRow
+        from src.screener import screen_mandiri_constituents
+
+        rows_ar = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=1000, high=1050, low=950, close=1000, volume=1e6, value=1e9, f_buy=1e5, f_sell=5e4, n_foreign=5e4)
+            for i in range(19)
+        ]
+        # Latest locked at AR: high == low == close == 1100
+        rows_ar.append(
+            OHLCRow(date="2026-09-20", open=1100, high=1100, low=1100, close=1100, volume=2e6, value=2.2e9, f_buy=1.5e6, f_sell=1e5, n_foreign=1.4e6)
+        )
+
+        stock_ohlc_map = {"BBCA": rows_ar}
+        results = screen_mandiri_constituents(
+            favored_sectors=["Financials"],
+            sector_config=self.sector_config,
+            stock_ohlc_map=stock_ohlc_map,
+        )
+        self.assertEqual(results, [])
+
 
 if __name__ == "__main__":
     unittest.main()
