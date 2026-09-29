@@ -284,13 +284,8 @@ def extract_fundamental_metrics(fin_data: dict, close_price: float = 0.0) -> dic
                 metrics["verification_note"] = "Data kuartal tidak kontinu (ada kuartal terlewat pada feed API), nilai TTM perlu verifikasi manual."
         elif ttm_eps_list or latest_eps is not None:
             if latest_eps is not None:
-                latest_q = str(inc_items[0].get("quarter")) if inc_items else None
-                if latest_q == '4':
-                    metrics["eps_ttm"] = round(latest_eps, 2)
-                    metrics["eps_basis"] = "Annual (Kuartal Q4 / Full Year)"
-                else:
-                    metrics["eps_ttm"] = round(latest_eps * 4, 2)
-                    metrics["eps_basis"] = f"Annualized (Kuartal {metrics['reporting_period']} x 4)"
+                metrics["eps_ttm"] = round(latest_eps * 4, 2)
+                metrics["eps_basis"] = f"Annualized (Kuartal {metrics['reporting_period']} x 4)"
                 metrics["needs_manual_verification"] = True
                 if not is_continuous:
                     metrics["verification_note"] = "Data kuartal tidak kontinu (ada kuartal terlewat pada feed API), nilai TTM perlu verifikasi manual."
