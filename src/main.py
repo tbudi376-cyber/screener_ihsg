@@ -55,13 +55,12 @@ STEP 4 - FILTER CANDIDATES (DUAL MODE SCREENING)
     - Saring hasil screener_saham_terkini berdasarkan sektor Leading/Improving.
     - Saring berdasarkan bucket sinyal positif (SINYAL BERSIH, SINYAL SENYAP, AKUMULASI SENYAP).
   Mode "mandiri" (PRD §6 & §7.3):
-    - Saring konstituen sektor Leading & Improving secara top-down dari cache OHLC:
+    - Saring secara disiplin 4/4 kriteria wajib PRD §6:
       1. val >= Rp1 Miliar (val > 1mil)
       2. volume harian > MA20 volume (vol > ma20vol)
       3. Net Foreign Buy harian > 0 (n_foreign > 0 / f_buy > f_sell)
       4. close >= SMA20 close
-    - Kategorikan: Lolos 4/4 kriteria -> "🟢 SINYAL MANDIRI (PRD §6)"
-                   Lolos 3/4 kriteria -> "🥷 AKUMULASI MANDIRI (PRD §6)"
+    - Hasil: Lolos 4/4 kriteria -> "🟢 SINYAL MANDIRI (PRD §6)"
 
 STEP 5 - VALIDATE TOP CANDIDATES (4 API calls per candidate)
   Untuk 3-5 kandidat teratas:
@@ -160,7 +159,7 @@ def run_pipeline(
     favored_sectors = [
         item[0] for item in sector_ranking if item[1] in ("Leading", "Improving")
     ]
-    target_sectors = favored_sectors if favored_sectors else [item[0] for item in sector_ranking[:3]]
+    target_sectors = favored_sectors
 
     if mode == "mandiri":
         # Mode Mandiri: PRD §6 & §7.3 top-down screening from sector constituents
@@ -190,7 +189,7 @@ def run_pipeline(
         if favored_sectors:
             sector_filtered = filter_by_sectors(all_candidates, favored_sectors)
         else:
-            sector_filtered = all_candidates
+            sector_filtered = []
 
         bucket_filtered = filter_by_bucket(sector_filtered, config["positive_buckets"])
         if not bucket_filtered and sector_filtered:

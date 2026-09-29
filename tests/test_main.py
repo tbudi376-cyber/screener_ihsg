@@ -322,6 +322,49 @@ class TestMainPipeline(unittest.TestCase):
             self.assertIn("🟢 SINYAL MANDIRI (PRD §6)", content)
             self.assertIn("Energy", content)
 
+    def test_run_pipeline_empty_favored_sectors_produces_no_fallback(self):
+        """Verifikasi jika favored_sectors kosong (semua Lagging), tidak ada fallback ke sector_ranking[:3]."""
+        screener_data = {
+            "rows": [
+                {
+                    "stock_code": "BBCA",
+                    "stock_name": "Bank Central Asia Tbk.",
+                    "bucket": "SINYAL BERSIH",
+                    "summary": "asing beli kuat",
+                    "wr_event": 74.1,
+                    "potential": 11.0,
+                    "drawdown": -5.0,
+                    "note": "",
+                }
+            ]
+        }
+        # Benchmark rises sharply
+        benchmark_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=7000, high=7050, low=6950, close=7000 + i * 50, volume=1e9, value=7e12)
+            for i in range(25)
+        ]
+        # Financials drops sharply -> RS-Ratio < 100, RS-Momentum < 100 -> Lagging
+        sector_stock_closes = {
+            "Financials": {
+                f"F_{k}": [5000 - i * 20 for i in range(25)] for k in range(5)
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = run_pipeline(
+                screener_data=screener_data,
+                benchmark_ohlc=benchmark_ohlc,
+                sector_stock_closes=sector_stock_closes,
+                validations_data={},
+                output_dir=tmpdir,
+                date_str="2026-09-29",
+                mode="upstream",
+            )
+            content = Path(report_path).read_text(encoding="utf-8")
+            cand_section = content.split("## 2. Kandidat Screening")[1].split("## 3. Validasi Mendalam")[0]
+            # Must NOT fall back to processing BBCA
+            self.assertNotIn("BBCA", cand_section)
+            self.assertIn("Tidak ada kandidat", cand_section)
+
 
 if __name__ == "__main__":
     unittest.main()

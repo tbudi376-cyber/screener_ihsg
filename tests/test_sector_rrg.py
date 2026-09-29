@@ -173,12 +173,21 @@ class TestRRG(unittest.TestCase):
 
     def test_classify_quadrant_with_tolerance(self):
         """Verifikasi toleransi sekitar 100 (misalnya 0.2) untuk nilai momentum ketat."""
-        # 99.85 dengan tolerance 0.2 diakui sebagai >= 100
+        # 99.85 dengan tolerance 0.2 diakui sebagai >= 100 jika rs_ratio >= 100 (Leading)
         self.assertEqual(classify_quadrant(102.0, 99.85, tolerance=0.2), "Leading")
-        self.assertEqual(classify_quadrant(98.0, 99.85, tolerance=0.2), "Improving")
+        # rs_ratio < 100 dengan momentum < 100 TIDAK PERNAH dipromosikan ke Improving meskipun ada toleransi
+        self.assertEqual(classify_quadrant(98.0, 99.85, tolerance=0.2), "Lagging")
+        # rs_ratio < 100 dengan momentum >= 100 adalah Improving
+        self.assertEqual(classify_quadrant(98.0, 100.5, tolerance=0.2), "Improving")
         # Nilai di bawah tolerance (misal 99.7) tetap Lagging / Weakening
         self.assertEqual(classify_quadrant(98.0, 99.70, tolerance=0.2), "Lagging")
         self.assertEqual(classify_quadrant(102.0, 99.70, tolerance=0.2), "Weakening")
+
+    def test_classify_quadrant_never_promotes_momentum_below_100_to_improving(self):
+        """Memastikan rasio < 100 dan momentum < 100 tidak pernah diklasifikasikan ke Improving."""
+        self.assertEqual(classify_quadrant(99.9, 99.9, tolerance=0.0), "Lagging")
+        self.assertEqual(classify_quadrant(99.9, 99.9, tolerance=0.5), "Lagging")
+        self.assertEqual(classify_quadrant(95.0, 99.99, tolerance=1.0), "Lagging")
 
     def test_rank_sectors_filters_out_unknown_sector(self):
         """Sektor 'Unknown' harus disaring dari hasil ranking RRG."""

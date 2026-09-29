@@ -108,6 +108,8 @@ class TestReport(unittest.TestCase):
         self.assertIn("SINYAL BERSIH", report)
         self.assertIn("WR Event", report)
         self.assertIn("screener_saham_terkini", report)
+        self.assertIn("🟢 SINYAL MANDIRI (PRD §6)", report)
+        self.assertNotIn("AKUMULASI MANDIRI", report)
 
     def test_empty_candidates_still_generates(self):
         report = generate_daily_report(

@@ -561,6 +561,32 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Data broker summary belum tersedia untuk sesi ini", summary)
         self.assertIn("End of Day / EOD", summary)
 
+    def test_avoid_stock_cleans_mantul_hold_and_active_buy_recommendations(self):
+        """Verifikasi bahwa narasi 'mantul/hold Rp...' dan 'Jika belum punya: Buy...' dibersihkan pada saham AVOID."""
+        analysis_avoid = (
+            "📊 **HRUM** — Analisis\n"
+            "Score: **20/75** — ⚪ **NETRAL**\n"
+            "**📋 REKOMENDASI**\n"
+            "⛔ **AVOID**\n"
+            "Jika sudah punya: Cut loss jika break Rp820\n"
+            "Jika belum punya: Buy on weakness jika mantul/hold Rp800 - Rp820\n"
+            "Entry: Rp800 - Rp820\n"
+            "Stop Loss: Rp780\n"
+        )
+        result = assemble_validation(
+            candidate=self.candidate,
+            analysis_text=analysis_avoid,
+            broker_data={},
+            ohlc_rows=self.ohlc_rows,
+        )
+        summary = format_validation_summary(result)
+        self.assertNotIn("mantul/hold Rp800", summary)
+        self.assertNotIn("Buy on weakness", summary)
+        self.assertIn("tidak disarankan entry", summary)
+        self.assertIn("Jika belum punya: Lewati / tidak disarankan entry", summary)
+        self.assertIn("Entry: TIDAK DISARANKAN ENTRY", summary)
+        self.assertIn("Stop Loss (Pengaman Eksisting): Rp", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

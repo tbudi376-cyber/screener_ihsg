@@ -591,6 +591,8 @@ def format_validation_summary(result: ValidationResult) -> str:
             if is_avoid_plan:
                 analysis_text = re.sub(r"Stop\s*Loss:\s*Rp[^\n]+", f"Stop Loss (Pengaman Eksisting): Rp{tp.cutloss:,.0f}", analysis_text)
                 analysis_text = re.sub(r"Entry:\s*Rp[^\n]+", f"Entry: TIDAK DISARANKAN ENTRY | Status: {tp.status}", analysis_text)
+                analysis_text = re.sub(r"mantul/hold\s*Rp[\d\.,]+[KMB]?(\s*-\s*Rp[\d\.,]+[KMB]?)?", "tidak disarankan entry", analysis_text, flags=re.IGNORECASE)
+                analysis_text = re.sub(r"Jika\s*belum\s*punya\s*:\s*(Buy|Beli|Tunggu\s+konfirmasi)[^\n]+", "Jika belum punya: Lewati / tidak disarankan entry (Sinyal AVOID / Tekanan Jual Kuat)", analysis_text, flags=re.IGNORECASE)
             else:
                 analysis_text = re.sub(r"break\s*Rp[\d\.,]+[KMB]?", f"break Rp{tp.cutloss:,.0f}", analysis_text)
                 analysis_text = re.sub(r"mantul/hold\s*Rp[\d\.,]+[KMB]?\s*-\s*Rp[\d\.,]+[KMB]?", f"mantul/hold Rp{tp.entry_low:,.0f}-Rp{tp.max_entry:,.0f}", analysis_text)

@@ -85,24 +85,22 @@ def classify_quadrant(rs_ratio: float, rs_momentum: float, tolerance: float = 0.
     """Classify RRG quadrant from RS-Ratio and RS-Momentum.
     
     Standard RRG 4-quadrant Cartesian classification centered at (100, 100):
-    - Leading: RS-Ratio >= 100, RS-Momentum >= 100
-    - Improving: RS-Ratio < 100, RS-Momentum >= 100
-    - Weakening: RS-Ratio >= 100, RS-Momentum < 100
+    - Leading: RS-Ratio >= 100, RS-Momentum >= (100 - tolerance)
+    - Improving: RS-Ratio < 100, RS-Momentum >= 100 (momentum < 100 must never be promoted to Improving)
+    - Weakening: RS-Ratio >= 100, RS-Momentum < (100 - tolerance)
     - Lagging: RS-Ratio < 100, RS-Momentum < 100
-
-    RS-Ratio must strictly be >= 100.0 to be in Leading or Weakening.
-    Underperforming sectors (RS-Ratio < 100) can never be Leading.
-    Tolerance only applies to momentum near 100 when explicitly specified.
     """
     ratio_high = rs_ratio >= 100.0
+    if not ratio_high:
+        # Momentum < 100 is strictly Lagging and must never be promoted to Improving
+        if rs_momentum >= 100.0:
+            return "Improving"
+        return "Lagging"
+
     mom_high = rs_momentum >= (100.0 - tolerance)
-    if ratio_high and mom_high:
+    if mom_high:
         return "Leading"
-    if not ratio_high and mom_high:
-        return "Improving"
-    if ratio_high and not mom_high:
-        return "Weakening"
-    return "Lagging"
+    return "Weakening"
 
 
 def compute_rrg_for_stock(

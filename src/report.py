@@ -293,7 +293,6 @@ def generate_daily_report(
     lines.append("   - **SINYAL SENYAP**: Akumulasi pekat oleh broker utama atau asing saat volatilitas harga masih tenang (mode senyap / belum breakout).")
     lines.append("   - **AKUMULASI SENYAP**: Sinyal tier-2 dengan tanda akumulasi awal, disiapkan sebagai watchlist bila volume terkonfirmasi meningkat.")
     lines.append("   - **🟢 SINYAL MANDIRI (PRD §6)**: Lolos 4/4 filter PRD (Val > Rp1 Miliar, Vol > MA20, Net Buy Asing > 0, Close >= SMA20) dari konstituen sektor Leading/Improving.")
-    lines.append("   - **🥷 AKUMULASI MANDIRI (PRD §6)**: Lolos 3/4 filter PRD (akumulasi awal / konfirmasi volume atau net buy asing parsial).")
     lines.append("   - **RISIKO PANTULAN / KONFLIK DISTRIBUSI**: Anomali di mana harga naik tetapi broker distribusi aktif atau asing melepas barang (diberi penalti skor/disaring).")
     lines.append("")
     lines.append("2. **Metrik Probabilitas Historis** — _Sumber: Model backtest event-based `idx-edge` (Jan 2020 - sekarang)_")
