@@ -587,6 +587,40 @@ class TestValidator(unittest.TestCase):
         self.assertIn("Entry: TIDAK DISARANKAN ENTRY", summary)
         self.assertIn("Stop Loss (Pengaman Eksisting): Rp", summary)
 
+    def test_extract_personality_and_assemble_potential_and_drawdown(self):
+        """Poin 1: Ekstraksi potensi (+6%) dan drawdown (-3%) dipasangkan ke candidate jika None."""
+        analysis_mandiri = """📊 **ASGR** — Analisis
+Score: **55/75** — ⚠️ **WATCH**
+**🧬 PERSONALITY HISTORIS**
+  Basis: pola aktif hari ini | WR Event pakai TP/CL ATR dinamis
+  1. Gabungan (Volume + Asing + Teknikal) — **EDGE HISTORIS**
+     WR Event 63.0% | rata2 event +1.90% | D3 +3.95%
+     potensi +6% | DD -3% | TP 55.6% | CL 33.3% | Timeout 11.1%
+     Sample 27 | PF 2.95 | exit avg D+2.6
+"""
+        stats = extract_personality_wr_stats(analysis_mandiri)
+        self.assertEqual(stats["potential"], 6.0)
+        self.assertEqual(stats["drawdown"], -3.0)
+
+        # Candidate with None potential and drawdown (typical Mode Mandiri)
+        cand = Candidate(
+            stock=Stock(code="ASGR", name="Astra Graphia Tbk.", sector="Technology"),
+            bucket="🟢 SINYAL MANDIRI (PRD §6)",
+            summary="mandiri 4/4",
+            wr_event=None,
+            potential=None,
+            drawdown=None,
+        )
+        res = assemble_validation(
+            candidate=cand,
+            analysis_text=analysis_mandiri,
+            broker_data={},
+            ohlc_rows=self.ohlc_rows,
+        )
+        self.assertEqual(cand.wr_event, 63.0)
+        self.assertEqual(cand.potential, 6.0)
+        self.assertEqual(cand.drawdown, -3.0)
+
 
 if __name__ == "__main__":
     unittest.main()

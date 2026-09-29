@@ -184,6 +184,7 @@ def generate_daily_report(
     lines.append("")
 
     if isinstance(quota_used, QuotaUsageBreakdown):
+        quota_used.validation_stocks_processed = len(validations)
         lines.append(f"_Kuota API terpakai: {quota_used.total_calls} request_")
         lines.append("")
         lines.append("### Rincian Penggunaan Kuota API per Modul:")
@@ -221,23 +222,6 @@ def generate_daily_report(
         if note:
             lines.append("")
             lines.append(note)
-
-        # Explicit decomposition of Energy score increase (3.4 -> 4.0)
-        lines.append("")
-        lines.append("_Catatan Analisis Dekomposisi Perubahan Skor Sektor Energy (3.4 -> 4.0):_")
-        lines.append(
-            "- **Porsi Perbaikan Metode Agregasi (Modus/Mean -> Median)**: Pada metode sebelumnya, skor 3.4 berasal dari "
-            "rata-rata kuadran saham sampel. Dengan metode agregasi median baru (beserta toleransi momentum 0.2), "
-            "kuadran dan skor sektor diturunkan langsung dari nilai median RS-Ratio dan median RS-Momentum. "
-            "Bahkan dengan sampel 5 saham awal (ADRO, PTBA, MEDC, PGAS, AKRA), nilai median RS-Ratio (103.4) dan "
-            "RS-Momentum (100.2) secara langsung mengklasifikasikan sektor Energy ke kuadran **Leading (Skor 4.0)**."
-        )
-        lines.append(
-            "- **Porsi Perubahan Komposisi Anggota (Audit Klasifikasi Resmi IDX-IC)**: Pemindahan konstituen non-energi "
-            "(BREN ke Infrastructures, TPIA ke Basic Materials) serta penambahan emiten batubara primer (DSSA dan HRUM "
-            "ke sektor Energy) memastikan sampel sektor patuh klasifikasi resmi IDX-IC. Perubahan komposisi ini menyelaraskan "
-            "basis fundamental tanpa mendistorsi klasifikasi kuadran Leading."
-        )
     else:
         lines.append("Tidak ada data RRG tersedia.")
     lines.append("")
@@ -265,14 +249,91 @@ def generate_daily_report(
                     wr = f"{c.wr_event:.1f}%"
             else:
                 wr = "-"
-            pot = f"+{c.potential:.0f}%" if c.potential else "-"
-            dd = f"{c.drawdown:.0f}%" if c.drawdown else "-"
+            pot = f"+{c.potential:.0f}%" if c.potential is not None else "-"
+            dd = f"{c.drawdown:.0f}%" if c.drawdown is not None else "-"
             lines.append(
                 f"| {i} | {c.stock.code} | {c.stock.name} | "
                 f"{c.stock.sector} | {c.bucket} | {wr} | {pot} | {dd} |"
             )
     else:
         lines.append("Tidak ada kandidat yang lolos filter hari ini.")
+    lines.append("")
+
+    # Ringkasan Eksekutif (Action Matrix)
+    lines.append("## Ringkasan Eksekutif (Action Matrix)")
+    if candidates:
+        val_map = {v.stock.code: v for v in validations} if validations else {}
+        siap_entry = []
+        tunggu_pelemahan = []
+        hindari = []
+
+        for c in candidates:
+            v = val_map.get(c.stock.code)
+            tp = v.trade_plan if v else None
+
+            is_avoid = False
+            avoid_reason = ""
+            if tp and (tp.status.startswith("TIDAK DIREKOMENDASIKAN") or tp.status == "PLAN TIDAK VALID"):
+                is_avoid = True
+                avoid_reason = tp.status
+            elif c.bucket in ("RISIKO PANTULAN", "KONFLIK DISTRIBUSI"):
+                is_avoid = True
+                avoid_reason = f"Bucket {c.bucket}"
+            elif c.wr_event is not None and c.wr_event < 50.0:
+                is_avoid = True
+                avoid_reason = f"WR Event rendah ({c.wr_event:.1f}% < 50%)"
+            elif v and v.personality_stats.get("is_weak_history"):
+                is_avoid = True
+                avoid_reason = "Probabilitas historis lemah (< 50%)"
+
+            if is_avoid:
+                detail = f"**{c.stock.code}** ({c.stock.name}) — {c.stock.sector}"
+                if tp:
+                    detail += f" | Batas Pengaman Eksisting: Rp{tp.cutloss:,.0f} (Cutloss)"
+                if avoid_reason:
+                    detail += f" — _{avoid_reason}_"
+                hindari.append(detail)
+            elif tp and tp.status.startswith("TUNGGU"):
+                detail = (
+                    f"**{c.stock.code}** ({c.stock.name}) — {c.stock.sector} | "
+                    f"Tunggu pelemahan di area Rp{tp.entry_low:,.0f} - Rp{tp.max_entry:,.0f} "
+                    f"(Target 1: Rp{tp.target1:,.0f}, Cutloss: Rp{tp.cutloss:,.0f})"
+                )
+                tunggu_pelemahan.append(detail)
+            elif tp and tp.status == "VALID":
+                detail = (
+                    f"**{c.stock.code}** ({c.stock.name}) — {c.stock.sector} | "
+                    f"Area Entry: Rp{tp.entry_low:,.0f} - Rp{tp.max_entry:,.0f} "
+                    f"(Target 1: Rp{tp.target1:,.0f}, Cutloss: Rp{tp.cutloss:,.0f})"
+                )
+                siap_entry.append(detail)
+            else:
+                detail = f"**{c.stock.code}** ({c.stock.name}) — {c.stock.sector} | Perlu konfirmasi teknikal/entry"
+                tunggu_pelemahan.append(detail)
+
+        lines.append("")
+        lines.append("- **🟢 SIAP ENTRY**:")
+        if siap_entry:
+            for item in siap_entry:
+                lines.append(f"  - {item}")
+        else:
+            lines.append("  - _Tidak ada kandidat pada kategori ini saat ini._")
+
+        lines.append("- **⏳ TUNGGU PELEMAHAN (Buy on Weakness)**:")
+        if tunggu_pelemahan:
+            for item in tunggu_pelemahan:
+                lines.append(f"  - {item}")
+        else:
+            lines.append("  - _Tidak ada kandidat pada kategori ini._")
+
+        lines.append("- **⛔ HINDARI (Tekanan Jual / AVOID)**:")
+        if hindari:
+            for item in hindari:
+                lines.append(f"  - {item}")
+        else:
+            lines.append("  - _Tidak ada kandidat pada kategori ini._")
+    else:
+        lines.append("Tidak ada kandidat untuk dikelompokkan.")
     lines.append("")
 
     lines.append("## 3. Validasi Mendalam")

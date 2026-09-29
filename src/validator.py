@@ -428,6 +428,10 @@ def extract_personality_wr_stats(analysis_text: str) -> dict:
         "patterns": [],
         "valid_patterns": [],
         "avg_wr": None,
+        "avg_potential": None,
+        "avg_drawdown": None,
+        "potential": None,
+        "drawdown": None,
         "is_weak_history": False,
         "flag": None,
     }
@@ -449,9 +453,15 @@ def extract_personality_wr_stats(analysis_text: str) -> dict:
         clean_tag = tag.strip().upper()
         wr_match = re.search(r'WR\s+Event\s*([\d\.]+)%', body, re.IGNORECASE)
         sample_match = re.search(r'Sample\s*(\d+)', body, re.IGNORECASE)
+        pot_match = re.search(r'potensi\s*([+-]?\d+(?:\.\d+)?)\s*%', body, re.IGNORECASE)
+        dd_match = re.search(r'(?:DD|drawdown)\s*([+-]?\d+(?:\.\d+)?)\s*%', body, re.IGNORECASE)
 
         wr_val = float(wr_match.group(1)) if wr_match else None
         sample_size = int(sample_match.group(1)) if sample_match else None
+        pot_val = float(pot_match.group(1)) if pot_match else None
+        dd_val = float(dd_match.group(1)) if dd_match else None
+        if dd_val is not None and dd_val > 0:
+            dd_val = -dd_val
 
         is_valid = True
         if "SAMPEL KECIL" in clean_tag or "KECIL" in clean_tag:
@@ -462,6 +472,8 @@ def extract_personality_wr_stats(analysis_text: str) -> dict:
             "title": title.strip(),
             "tag": tag.strip(),
             "wr_event": wr_val,
+            "potential": pot_val,
+            "drawdown": dd_val,
             "sample_size": sample_size,
             "is_valid_sample": is_valid,
         }
@@ -470,12 +482,32 @@ def extract_personality_wr_stats(analysis_text: str) -> dict:
             result["valid_patterns"].append(pat_info)
 
     if result["valid_patterns"]:
-        valid_wrs = [p["wr_event"] for p in result["valid_patterns"]]
-        avg_wr = sum(valid_wrs) / len(valid_wrs)
-        result["avg_wr"] = round(avg_wr, 1)
-        if avg_wr < 50.0:
-            result["is_weak_history"] = True
-            result["flag"] = f"{avg_wr:.1f}% ⚠️ Historis Lemah"
+        valid_wrs = [p["wr_event"] for p in result["valid_patterns"] if p.get("wr_event") is not None]
+        if valid_wrs:
+            avg_wr = sum(valid_wrs) / len(valid_wrs)
+            result["avg_wr"] = round(avg_wr, 1)
+            if avg_wr < 50.0:
+                result["is_weak_history"] = True
+                result["flag"] = f"{avg_wr:.1f}% ⚠️ Historis Lemah"
+
+    target_patterns = result["valid_patterns"] if result["valid_patterns"] else result["patterns"]
+    pots = [p["potential"] for p in target_patterns if p.get("potential") is not None]
+    if pots:
+        result["avg_potential"] = round(sum(pots) / len(pots), 1)
+        result["potential"] = result["avg_potential"]
+    else:
+        pot_fallback = re.search(r'potensi\s*([+-]?\d+(?:\.\d+)?)\s*%', section, re.IGNORECASE)
+        if pot_fallback:
+            result["potential"] = float(pot_fallback.group(1))
+
+    dds = [p["drawdown"] for p in target_patterns if p.get("drawdown") is not None]
+    if dds:
+        result["avg_drawdown"] = round(sum(dds) / len(dds), 1)
+        result["drawdown"] = result["avg_drawdown"]
+    else:
+        dd_fallback = re.search(r'(?:DD|drawdown)\s*([+-]?\d+(?:\.\d+)?)\s*%', section, re.IGNORECASE)
+        if dd_fallback:
+            result["drawdown"] = -abs(float(dd_fallback.group(1)))
 
     return result
 
@@ -494,6 +526,16 @@ def assemble_validation(
     if personality_stats.get("avg_wr") is not None:
         if candidate.wr_event is None:
             candidate.wr_event = personality_stats["avg_wr"]
+
+    # Pasangkan potensi dan drawdown ke candidate jika bernilai None
+    extracted_pot = personality_stats.get("potential") if personality_stats.get("potential") is not None else personality_stats.get("avg_potential")
+    if candidate.potential is None and extracted_pot is not None:
+        candidate.potential = extracted_pot
+
+    extracted_dd = personality_stats.get("drawdown") if personality_stats.get("drawdown") is not None else personality_stats.get("avg_drawdown")
+    if candidate.drawdown is None and extracted_dd is not None:
+        candidate.drawdown = extracted_dd
+
     if personality_stats.get("is_weak_history"):
         wr_disp = candidate.wr_event if candidate.wr_event is not None else personality_stats["avg_wr"]
         candidate.wr_event_flag = f"{wr_disp:.1f}% ⚠️ Historis Lemah"

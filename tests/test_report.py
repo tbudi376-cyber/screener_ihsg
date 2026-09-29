@@ -222,14 +222,41 @@ class TestReport(unittest.TestCase):
         self.assertIn("Lagging -> Leading", report)
         self.assertIn("tidak serta-merta menggantikan sinyal teknikal individual", report)
 
-    def test_report_contains_energy_score_decomposition_note(self):
-        """Verifikasi catatan dekomposisi kenaikan skor Energy memisahkan agregasi vs komposisi."""
+    def test_report_does_not_contain_energy_score_decomposition_note(self):
+        """Poin 3: Template laporan bersih dari catatan hardcoded dekomposisi Energy."""
         report = generate_daily_report(
             "2026-09-28", self.sector_ranking, self.candidates, self.validations, 25
         )
-        self.assertIn("Dekomposisi Perubahan Skor Sektor Energy (3.4 -> 4.0)", report)
-        self.assertIn("Porsi Perbaikan Metode Agregasi", report)
-        self.assertIn("Porsi Perubahan Komposisi Anggota", report)
+        self.assertNotIn("Dekomposisi Perubahan Skor Sektor Energy (3.4 -> 4.0)", report)
+        self.assertNotIn("Porsi Perbaikan Metode Agregasi", report)
+        self.assertNotIn("Porsi Perubahan Komposisi Anggota", report)
+
+    def test_report_contains_action_matrix_executive_summary(self):
+        """Poin 4: Blok '## Ringkasan Eksekutif (Action Matrix)' mengelompokkan 3 kategori aksi."""
+        report = generate_daily_report(
+            "2026-09-28", self.sector_ranking, self.candidates, self.validations, 25
+        )
+        self.assertIn("## Ringkasan Eksekutif (Action Matrix)", report)
+        self.assertIn("🟢 SIAP ENTRY", report)
+        self.assertIn("⏳ TUNGGU PELEMAHAN (Buy on Weakness)", report)
+        self.assertIn("⛔ HINDARI (Tekanan Jual / AVOID)", report)
+        self.assertIn("BBCA", report)
+
+    def test_report_synchronizes_validation_stocks_processed(self):
+        """Poin 2: quota_used.validation_stocks_processed sinkron dinamis dengan len(validations)."""
+        breakdown = QuotaUsageBreakdown(
+            screener_calls=1,
+            benchmark_calls=1,
+            validation_calls=4,
+            validation_stocks_processed=99,  # Initially inaccurate/mismatched
+            total_calls=6,
+        )
+        report = generate_daily_report(
+            "2026-09-28", self.sector_ranking, self.candidates, self.validations, breakdown
+        )
+        # self.validations has 1 stock (BBCA), so it must be synchronized to 1
+        self.assertEqual(breakdown.validation_stocks_processed, len(self.validations))
+        self.assertIn(f"({len(self.validations)} saham kandidat divalidasi mendalam)", report)
 
     def test_get_previous_sector_quadrants(self):
         """Verifikasi parsing kuadran sektor dari laporan hari sebelumnya."""

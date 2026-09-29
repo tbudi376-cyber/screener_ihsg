@@ -223,6 +223,9 @@ def run_pipeline(
         )
         validations.append(val_res)
 
+    if isinstance(quota_used, QuotaUsageBreakdown):
+        quota_used.validation_stocks_processed = len(validations)
+
     # 4. Generate report and save
     report_content = generate_daily_report(
         date=report_date,

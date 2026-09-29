@@ -131,6 +131,25 @@ return "Weakening"
   - Konstituen Basic Materials kini terdiri dari 13 emiten berkapitalisasi dan bervolume sehat (`INKP`, `TKIM`, `INTP`, `SMGR`, `BRPT`, `MDKA`, `ANTM`, `INCO`, `ADMR`, `TINS`, `VISI`, `TPIA`, `BRMS`).
   - Konstituen Properties & Real Estate kini terdiri dari 10 emiten representatif (`BSDE`, `CTRA`, `SMRA`, `PWON`, `LPKR`, `DILD`, `APLN`, `JRPT`, `PPRO`, `MKPI`).
 
+### 3.5. Modul Validasi: Ekstraksi Potensi & Drawdown pada Mode Mandiri ([`src/validator.py`](file:///root/projects/screener_ihsg/src/validator.py))
+- **Akar Masalah:** Pada Mode Mandiri, data kandidat awal ditapis murni dari konstituen sektor tanpa melewati baris screener upstream, sehingga `candidate.potential` dan `candidate.drawdown` bernilai `None`. Akibatnya, tabel kandidat Mode Mandiri menampilkan tanda strip (`-`).
+- **Implementasi Solusi:** Memperluas [`extract_personality_wr_stats`](file:///root/projects/screener_ihsg/src/validator.py) untuk mengekstrak angka `potensi` (misal: `+6%`) dan `drawdown` (misal: `-3%`) dari bagian Personality Historis, serta memasangkannya ke `candidate.potential` dan `candidate.drawdown` di [`assemble_validation`](file:///root/projects/screener_ihsg/src/validator.py) jika bernilai `None`.
+- **Hasil:** Tabel kandidat Mode Mandiri kini menampilkan angka potensi dan drawdown yang lengkap dan jujur.
+
+### 3.6. Sinkronisasi Dinamis Kuota Validasi ([`src/main.py`](file:///root/projects/screener_ihsg/src/main.py) & [`src/report.py`](file:///root/projects/screener_ihsg/src/report.py))
+- **Akar Masalah:** `quota_used.validation_stocks_processed` sebelumnya dapat berbeda dari jumlah kandidat yang benar-benar divalidasi pada sesi berjalan (misal: tercatat 3 saham padahal hanya 1 saham yang divalidasi mendalam).
+- **Implementasi Solusi:** Menyinkronkan nilai `quota_used.validation_stocks_processed = len(validations)` secara dinamis baik di [`src/main.py`](file:///root/projects/screener_ihsg/src/main.py) maupun di [`src/report.py`](file:///root/projects/screener_ihsg/src/report.py).
+
+### 3.7. Pembersihan Template: Penghapusan Catatan Hardcoded Energy ([`src/report.py`](file:///root/projects/screener_ihsg/src/report.py))
+- **Akar Masalah:** Teks catatan analisis dekomposisi kenaikan skor sektor Energy (3.4 -> 4.0) tertanam statis (*hardcoded*) di template laporan harian sehingga terus tercetak berulang setiap hari.
+- **Implementasi Solusi:** Menghapus paragraf statis tersebut dari template laporan di [`src/report.py`](file:///root/projects/screener_ihsg/src/report.py).
+
+### 3.8. Blok Ringkasan Eksekutif / Action Matrix ([`src/report.py`](file:///root/projects/screener_ihsg/src/report.py))
+- **Fitur Baru:** Menambahkan blok `## Ringkasan Eksekutif (Action Matrix)` tepat di bawah Tabel Kandidat yang mengelompokkan kandidat ke dalam 3 kategori status ringkas dan dapat langsung ditindaklanjuti:
+  1. **🟢 SIAP ENTRY**: Saham dalam rentang beli aman dengan Risk-to-Reward $\ge 1.0:1$.
+  2. **⏳ TUNGGU PELEMAHAN (Buy on Weakness)**: Saham di atas batas entry maksimum; disarankan antri di batas bawah support.
+  3. **⛔ HINDARI (Tekanan Jual / AVOID)**: Saham dalam tekanan jual, skor $\le 25/75$, atau Win Rate historis $< 50\%$.
+
 ---
 
 ## 4. Hasil Verifikasi Pengujian Unit Test
@@ -146,23 +165,23 @@ plugins: anyio-4.14.1
 tests/test_main.py .................................... [  5%] ( 5 passed)
 tests/test_mcp_client.py .............................. [ 14%] ( 9 passed)
 tests/test_pivot.py ................................... [ 22%] ( 8 passed)
-tests/test_report.py .................................. [ 44%] (22 passed)
-tests/test_screener.py ................................ [ 56%] (12 passed)
-tests/test_sector_rrg.py .............................. [ 73%] (17 passed)
-tests/test_validator.py ............................... [100%] (26 passed)
+tests/test_report.py .................................. [ 46%] (24 passed)
+tests/test_screener.py ................................ [ 57%] (12 passed)
+tests/test_sector_rrg.py .............................. [ 74%] (17 passed)
+tests/test_validator.py ............................... [100%] (27 passed)
 
-============================== 99 passed in 1.70s ==============================
+============================= 102 passed in 1.77s ==============================
 ```
 
 ### Rincian Unit Test Kunci Baru:
-1. `tests/test_validator.py::TestValidator::test_avoid_stock_cleans_mantul_hold_and_active_buy_recommendations`
-   - Memastikan bahwa narasi `mantul/hold Rp800 - Rp820` dan `Jika belum punya: Buy on weakness...` dibersihkan dari laporan saat emiten berstatus AVOID / skor $\le 25$.
-2. `tests/test_sector_rrg.py::TestRRG::test_classify_quadrant_never_promotes_momentum_below_100_to_improving`
-   - Memastikan bahwa rasio $< 100$ dan momentum $< 100$ (misal 99.9, 99.9) selalu menjadi `Lagging`, bahkan jika parameter toleransi diberikan nilai tinggi (0.5 hingga 1.0).
-3. `tests/test_main.py::TestMainPipeline::test_run_pipeline_empty_favored_sectors_produces_no_fallback`
-   - Memastikan bahwa ketika seluruh sektor bursa berstatus *Lagging*, pipeline tidak mengambil 3 sektor teratas secara acak dan tabel kandidat screening menghasilkan 0 saham (*clean empty state*).
-4. `tests/test_report.py::TestReport::test_report_contains_metric_glossary`
-   - Memastikan bahwa glossary memuat `🟢 SINYAL MANDIRI (PRD §6)` dan tidak memuat `AKUMULASI MANDIRI`.
+1. `tests/test_validator.py::TestValidator::test_extract_personality_and_assemble_potential_and_drawdown`
+   - Memverifikasi ekstraksi `potensi` (+6%) dan `drawdown` (-3%) dari teks personality dan memasangkannya ke candidate.
+2. `tests/test_report.py::TestReport::test_report_contains_action_matrix_executive_summary`
+   - Memverifikasi keberadaan blok `## Ringkasan Eksekutif (Action Matrix)` beserta 3 kategori aksi.
+3. `tests/test_report.py::TestReport::test_report_synchronizes_validation_stocks_processed`
+   - Memverifikasi bahwa `quota_used.validation_stocks_processed` sinkron dinamis dengan `len(validations)`.
+4. `tests/test_report.py::TestReport::test_report_does_not_contain_energy_score_decomposition_note`
+   - Memverifikasi template laporan bersih dari paragraf statis dekomposisi Energy.
 
 ---
 
