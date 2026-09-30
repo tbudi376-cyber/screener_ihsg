@@ -365,6 +365,53 @@ class TestMainPipeline(unittest.TestCase):
             self.assertNotIn("BBCA", cand_section)
             self.assertIn("Tidak ada kandidat", cand_section)
 
+    def test_run_pipeline_mode_mandiri_detects_and_processes_non_sample_constituents(self):
+        """Verifikasi bahwa Mode Mandiri memproses saham konstituen non-sampel RRG (seperti MSJA di Industrials)
+        secara independen tanpa memerlukan input dari mode upstream."""
+        # Benchmark: 25 days of closes
+        bench_closes = [7000 + i * 10 for i in range(25)]
+        benchmark_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=7000, high=7050, low=6950, close=bench_closes[i], volume=1e9, value=7e12)
+            for i in range(25)
+        ]
+        # Industrials: 5 representative stocks outperforming benchmark (Leading)
+        sector_stock_closes = {
+            "Industrials": {
+                "ASII": [5000 + i * 25 for i in range(25)],
+                "UNTR": [25000 + i * 100 for i in range(25)],
+                "HEXA": [6000 + i * 30 for i in range(25)],
+                "IMPC": [4000 + i * 20 for i in range(25)],
+                "ARNA": [800 + i * 5 for i in range(25)],
+            }
+        }
+        # MSJA is a constituent of Industrials in config/sectors.json (not in the 5 sample stocks above)
+        msja_ohlc = [
+            OHLCRow(date=f"2026-09-{i+1:02d}", open=800, high=810, low=790, close=800, volume=10e6, value=8e9, f_buy=1e6, f_sell=1e6, n_foreign=0)
+            for i in range(19)
+        ]
+        # Latest MSJA passes 4/4 filter
+        msja_ohlc.append(
+            OHLCRow(date="2026-09-20", open=800, high=850, low=800, close=830, volume=25e6, value=20e9, f_buy=10e6, f_sell=2e6, n_foreign=8e6)
+        )
+        stock_ohlc_map = {"MSJA": msja_ohlc}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = run_pipeline(
+                screener_data={"rows": []},  # zero upstream screener rows
+                benchmark_ohlc=benchmark_ohlc,
+                sector_stock_closes=sector_stock_closes,
+                validations_data={},
+                output_dir=tmpdir,
+                date_str="2026-09-30",
+                mode="mandiri",
+                stock_ohlc_map=stock_ohlc_map,
+            )
+            content = Path(report_path).read_text(encoding="utf-8")
+            self.assertIn("Mode Screening: Mandiri (Top-Down Sektor)", content)
+            self.assertIn("MSJA", content)
+            self.assertIn("🟢 SINYAL MANDIRI (PRD §6)", content)
+            self.assertIn("Industrials", content)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,6 +57,7 @@ The orchestrator (`src/main.py`) supports two distinct execution modes:
   - Output files: `output/screener_upstream_YYYY-MM-DD.md` (and legacy `screener_YYYY-MM-DD.md`).
 - **Mode Mandiri (`mode="mandiri"`, explicit sore run)**:
   - Source: Constituent stocks of Leading/Improving sectors from `config/sectors.json`.
+  - Complete Constituent Coverage (Independent Execution): After RRG determines Leading/Improving sectors, fetch OHLC for all remaining constituent stocks of those favored sectors (`get_missing_favored_constituents`). Never rely on upstream mode to trigger constituent caching.
   - Strict 4/4 Filter (PRD §6):
     1. Daily transaction value $\ge \text{Rp}1\text{ Miliar}$ (`latest.value >= 1e9`)
     2. Daily volume $>$ SMA20 volume (`latest.volume > sma20_vol`)

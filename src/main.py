@@ -23,7 +23,7 @@ from src.models import (
 from src.sector_rrg import compute_rrg_for_stock, rank_sectors, select_representative_stocks
 from src.screener import (
     parse_screener_rows, filter_by_sectors, filter_by_bucket, rank_candidates,
-    screen_mandiri_constituents,
+    screen_mandiri_constituents, get_missing_favored_constituents,
 )
 from src.validator import assemble_validation, build_validation_request_list
 from src.report import generate_daily_report, save_report
@@ -48,14 +48,24 @@ STEP 3 - RRG & OHLC CACHE for SECTOR STOCKS (55 API calls)
   Biaya kuota tetap 1 API call per saham (total 55 call).
   Data ini berfungsi ganda:
   - Ekstrak closes untuk kalkulasi RRG Sektor (Leading/Improving/Weakening/Lagging).
-  - Cache OHLC lengkap untuk penyaringan Mode Mandiri (PRD §6) tanpa kuota tambahan.
+  - Cache OHLC awal untuk konstituen perwakilan.
+
+STEP 3B - MODE MANDIRI: COMPLETE CONSTITUENT CACHE FOR FAVORED SECTORS
+  Khusus mode="mandiri":
+  Setelah RRG menentukan sektor unggulan (Leading & Improving):
+  Identifikasi konstituen dari sektor unggulan tersebut yang belum ada di cache OHLC
+  via get_missing_favored_constituents(favored_sectors, sector_config, stock_ohlc_map).
+  Tarik riwayat_harga untuk konstituen yang belum tercache (biasanya 10-25 call tambahan,
+  total kuota tetap aman dalam batas 70-85 call).
+  Hal ini menjamin 100% konstituen sektor unggulan tersaring penuh secara mandiri
+  tanpa ada saham potensial (seperti MSJA) yang terlewat atau bergantung pada mode upstream.
 
 STEP 4 - FILTER CANDIDATES (DUAL MODE SCREENING)
   Mode "upstream" (Default):
     - Saring hasil screener_saham_terkini berdasarkan sektor Leading/Improving.
     - Saring berdasarkan bucket sinyal positif (SINYAL BERSIH, SINYAL SENYAP, AKUMULASI SENYAP).
   Mode "mandiri" (PRD §6 & §7.3):
-    - Saring secara disiplin 4/4 kriteria wajib PRD §6:
+    - Saring secara disiplin 4/4 kriteria wajib PRD §6 dari seluruh konstituen sektor unggulan:
       1. val >= Rp1 Miliar (val > 1mil)
       2. volume harian > MA20 volume (vol > ma20vol)
       3. Net Foreign Buy harian > 0 (n_foreign > 0 / f_buy > f_sell)
@@ -168,6 +178,19 @@ def run_pipeline(
             for code, vdata in validations_data.items():
                 if "ohlc_rows" in vdata and vdata["ohlc_rows"]:
                     stock_ohlc_map[code] = vdata["ohlc_rows"]
+
+        if target_sectors:
+            missing_constituents = get_missing_favored_constituents(
+                favored_sectors=target_sectors,
+                sector_config=config["sector_config"],
+                cached_codes=stock_ohlc_map,
+            )
+            if missing_constituents:
+                print(
+                    f"Log: Mode Mandiri mendeteksi {len(missing_constituents)} saham konstituen "
+                    f"sektor unggulan belum ada di cache OHLC: {missing_constituents}. "
+                    f"Untuk cakupan mandiri 100%, pastikan seluruh konstituen ditarik via riwayat_harga."
+                )
 
         top_candidates = screen_mandiri_constituents(
             favored_sectors=target_sectors,

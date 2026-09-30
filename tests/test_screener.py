@@ -211,6 +211,51 @@ class TestScreener(unittest.TestCase):
         )
         self.assertEqual(results, [])
 
+    def test_get_missing_favored_constituents(self):
+        """Verifikasi get_missing_favored_constituents mendeteksi saham konstituen yang belum tercache."""
+        from src.screener import get_missing_favored_constituents
+
+        sector_config = {
+            "Industrials": ["ASII", "UNTR", "HEXA", "IMPC", "ARNA", "SGER", "MASA", "AUTO", "GJTL", "MSJA"],
+            "Energy": ["ADRO", "PTBA", "MEDC", "PGAS", "AKRA", "ELSA", "RAJA"],
+            "Financials": ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS"],
+        }
+        # Initially only 5 RRG sample stocks cached for Industrials and Energy
+        cached = {"ASII", "UNTR", "HEXA", "IMPC", "ARNA", "ADRO", "PTBA", "MEDC", "PGAS", "AKRA"}
+
+        # Case 1: Industrials and Energy are favored -> should return missing constituents
+        missing = get_missing_favored_constituents(
+            favored_sectors=["Industrials", "Energy"],
+            sector_config=sector_config,
+            cached_codes=cached,
+        )
+        self.assertIn("MSJA", missing)
+        self.assertIn("AUTO", missing)
+        self.assertIn("ELSA", missing)
+        self.assertIn("RAJA", missing)
+        self.assertNotIn("ASII", missing)
+        self.assertNotIn("ADRO", missing)
+        self.assertEqual(len(missing), 7)  # 5 from Industrials, 2 from Energy
+
+        # Case 2: All cached -> returns empty list
+        all_cached = cached.union(set(missing))
+        self.assertEqual(
+            get_missing_favored_constituents(["Industrials", "Energy"], sector_config, all_cached),
+            []
+        )
+
+        # Case 3: Non-favored sectors are ignored
+        self.assertEqual(
+            get_missing_favored_constituents(["Financials"], sector_config, ["BBCA", "BBRI", "BMRI", "BBNI", "BRIS"]),
+            []
+        )
+
+        # Case 4: Dict input works seamlessly
+        dict_cached = {code: True for code in cached}
+        missing_from_dict = get_missing_favored_constituents(["Industrials"], sector_config, dict_cached)
+        self.assertIn("MSJA", missing_from_dict)
+        self.assertEqual(len(missing_from_dict), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

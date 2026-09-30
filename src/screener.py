@@ -156,3 +156,22 @@ def screen_mandiri_constituents(
 # Alias for compatibility with sector constituent screening terminology
 screen_sector_constituents = screen_mandiri_constituents
 
+
+def get_missing_favored_constituents(
+    favored_sectors: list[str],
+    sector_config: dict[str, list[str]],
+    cached_codes: set[str] | list[str] | dict[str, any],
+) -> list[str]:
+    """Return constituent stocks in favored (Leading/Improving) sectors that are not yet cached in OHLC map.
+    
+    Ensures complete screening coverage of winning sector constituents in Mode Mandiri without
+    needing a prior trigger from Mode Upstream.
+    """
+    cached_set = set(cached_codes.keys()) if isinstance(cached_codes, dict) else set(cached_codes)
+    missing = []
+    for sector in favored_sectors:
+        for code in sector_config.get(sector, []):
+            if code not in cached_set and code not in missing:
+                missing.append(code)
+    return missing
+
